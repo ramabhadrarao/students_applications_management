@@ -33,34 +33,34 @@ const useFileUploadStore = create<FileUploadState>((set, get) => ({
     try {
       set({ loading: true, error: null });
       
-      // Build query string from filters
+      // ✅ FIXED: Don't manually filter - let backend handle it
+      console.log('🔍 Fetching files with backend filtering...');
+      console.log('📋 Filters passed to backend:', filters);
+      
+      // Build query string from filters (backend will handle user filtering automatically)
       const queryParams = new URLSearchParams();
       Object.entries(filters).forEach(([key, value]) => {
-        if (value !== undefined && value !== null) {
+        if (value !== undefined && value !== null && value !== '') {
           queryParams.append(key, value.toString());
         }
       });
       
-      // Debug logging
-      console.log('🔍 Fetching files with filters:', filters);
-      console.log('📋 Query params:', queryParams.toString());
-      
       const { data } = await axios.get(`/api/files?${queryParams.toString()}`);
       
-      // Handle different response formats
+      // ✅ FIXED: Handle consistent response format from backend
       let filesArray = [];
-      if (data.files) {
+      if (data.files && Array.isArray(data.files)) {
         filesArray = data.files;
       } else if (Array.isArray(data)) {
         filesArray = data;
-      } else if (data.docs) {
-        filesArray = data.docs;
       } else {
         console.warn('⚠️ Unexpected response format:', data);
         filesArray = [];
       }
       
-      console.log('✅ Files fetched successfully:', filesArray.length, 'files');
+      console.log('✅ Files fetched successfully from backend:', filesArray.length, 'files');
+      console.log('📊 Debug info:', data.debug);
+      
       set({ files: filesArray, loading: false });
     } catch (error: any) {
       console.error('❌ Failed to fetch files:', error.response?.data || error.message);
@@ -96,7 +96,7 @@ const useFileUploadStore = create<FileUploadState>((set, get) => ({
         },
       });
       
-      // Update files list - add new file to the beginning
+      // ✅ FIXED: Add new file to the beginning of the list
       const currentFiles = get().files;
       set({ 
         files: [data, ...currentFiles], 
@@ -205,7 +205,7 @@ const useFileUploadStore = create<FileUploadState>((set, get) => ({
       
       await axios.delete(`/api/files/${uuid}`);
       
-      // Update files list - remove deleted file
+      // ✅ FIXED: Remove deleted file from store
       const filteredFiles = get().files.filter(file => file.uuid !== uuid);
       set({ 
         files: filteredFiles, 

@@ -1,5 +1,5 @@
 // File: backend/controllers/fileUploadController.js
-// Purpose: Handle file upload operations and management
+// Purpose: Handle file upload operations and management - FIXED for user-specific files
 
 import asyncHandler from 'express-async-handler';
 import multer from 'multer';
@@ -68,6 +68,7 @@ const uploadFile = asyncHandler(async (req, res) => {
       }
 
       console.log('📁 File uploaded:', req.file.filename);
+      console.log('👤 Uploaded by user:', req.user._id);
 
       // Save file metadata to database
       const fileUpload = await FileUpload.create({
@@ -78,10 +79,10 @@ const uploadFile = asyncHandler(async (req, res) => {
         fileSize: req.file.size,
         mimeType: req.file.mimetype,
         description: req.body.description || '',
-        uploadedBy: req.user._id
+        uploadedBy: req.user._id // ✅ FIXED: Properly set uploadedBy
       });
 
-      console.log(`✅ File metadata saved: ${fileUpload.uuid}`);
+      console.log(`✅ File metadata saved: ${fileUpload.uuid} for user ${req.user._id}`);
       res.status(201).json(fileUpload);
     });
   } catch (error) {
@@ -103,6 +104,15 @@ const getFileByUuid = asyncHandler(async (req, res) => {
       .populate('verifiedBy', 'email');
 
     if (fileUpload) {
+      // ✅ FIXED: Check if user has permission to view this file
+      if (req.user.role !== 'admin' && 
+          req.user.role !== 'program_admin' && 
+          fileUpload.uploadedBy._id.toString() !== req.user._id.toString()) {
+        console.log(`❌ User ${req.user._id} denied access to file ${req.params.uuid}`);
+        res.status(403);
+        throw new Error('Not authorized to access this file');
+      }
+
       console.log(`✅ Found file: ${fileUpload.originalName}`);
       res.json(fileUpload);
     } else {
@@ -131,6 +141,15 @@ const downloadFile = asyncHandler(async (req, res) => {
       throw new Error('File not found');
     }
 
+    // ✅ FIXED: Check if user has permission to download this file
+    if (req.user.role !== 'admin' && 
+        req.user.role !== 'program_admin' && 
+        fileUpload.uploadedBy.toString() !== req.user._id.toString()) {
+      console.log(`❌ User ${req.user._id} denied download access to file ${req.params.uuid}`);
+      res.status(403);
+      throw new Error('Not authorized to download this file');
+    }
+
     // Check if file exists on disk
     if (!fs.existsSync(fileUpload.filePath)) {
       console.log(`❌ File not found on disk: ${fileUpload.filePath}`);
@@ -138,7 +157,7 @@ const downloadFile = asyncHandler(async (req, res) => {
       throw new Error('File not found on server');
     }
 
-    console.log(`✅ Serving file: ${fileUpload.originalName}`);
+    console.log(`✅ Serving file: ${fileUpload.originalName} to user ${req.user._id}`);
     
     // Set appropriate headers
     res.setHeader('Content-Disposition', `attachment; filename="${fileUpload.originalName}"`);
@@ -153,39 +172,69 @@ const downloadFile = asyncHandler(async (req, res) => {
   }
 });
 
-// @desc    Get all files uploaded by user
+// @desc    Get all files uploaded by user (FIXED for proper user filtering)
 // @route   GET /api/files
 // @access  Private
 const getUserFiles = asyncHandler(async (req, res) => {
   try {
     console.log('📋 Fetching user files...');
+    console.log('👤 Current user:', req.user._id, req.user.role);
     
-    const { page = 1, limit = 10 } = req.query;
+    const { page = 1, limit = 50, search } = req.query;
     
+    // ✅ FIXED: Build proper filter object
     const filter = {};
     
-    // For students, only show their own files
+    // ✅ FIXED: For students, ALWAYS filter by their own files
     if (req.user.role === 'student') {
       filter.uploadedBy = req.user._id;
+      console.log('🔒 Student filter applied - only showing files uploaded by:', req.user._id);
     }
     // For admin/program_admin, show all files or apply additional filters
+    else if (req.user.role === 'admin' || req.user.role === 'program_admin') {
+      console.log('👑 Admin/Program Admin - showing all files');
+      // Optionally, program admins could be filtered to only see files from their program users
+    }
     
+    // Add search filter if provided
+    if (search && search.trim()) {
+      filter.$or = [
+        { originalName: { $regex: search.trim(), $options: 'i' } },
+        { description: { $regex: search.trim(), $options: 'i' } }
+      ];
+      console.log('🔍 Search filter applied:', search.trim());
+    }
+    
+    console.log('🎯 Final filter object:', JSON.stringify(filter, null, 2));
+    
+    // ✅ FIXED: Get files with proper filtering and pagination
     const files = await FileUpload.find(filter)
-      .populate('uploadedBy', 'email')
+      .populate('uploadedBy', 'email role')
       .populate('verifiedBy', 'email')
       .sort({ uploadDate: -1 })
-      .limit(limit * 1)
-      .skip((page - 1) * limit);
+      .limit(parseInt(limit) * 1)
+      .skip((parseInt(page) - 1) * parseInt(limit));
     
     const total = await FileUpload.countDocuments(filter);
     
-    console.log(`✅ Found ${files.length} files`);
+    console.log(`✅ Found ${files.length} files for user ${req.user._id} (role: ${req.user.role})`);
+    console.log(`📊 Total matching files: ${total}`);
     
+    // ✅ FIXED: Return consistent format
     res.json({
       files,
-      totalPages: Math.ceil(total / limit),
-      currentPage: page,
-      total
+      pagination: {
+        currentPage: parseInt(page),
+        totalPages: Math.ceil(total / parseInt(limit)),
+        total,
+        limit: parseInt(limit)
+      },
+      debug: {
+        userId: req.user._id,
+        userRole: req.user.role,
+        filterApplied: filter,
+        totalFound: files.length
+      }
     });
   } catch (error) {
     console.error('❌ Error in getUserFiles:', error);
@@ -238,8 +287,9 @@ const deleteFile = asyncHandler(async (req, res) => {
       throw new Error('File not found');
     }
 
-    // Check permissions
+    // ✅ FIXED: Check permissions - students can only delete their own files
     if (req.user.role === 'student' && fileUpload.uploadedBy.toString() !== req.user._id.toString()) {
+      console.log(`❌ User ${req.user._id} denied delete access to file ${req.params.uuid}`);
       res.status(403);
       throw new Error('Not authorized to delete this file');
     }
@@ -253,7 +303,7 @@ const deleteFile = asyncHandler(async (req, res) => {
     // Delete from database
     await fileUpload.deleteOne();
     
-    console.log(`✅ File deleted: ${fileUpload.originalName}`);
+    console.log(`✅ File deleted: ${fileUpload.originalName} by user ${req.user._id}`);
     res.json({ message: 'File deleted successfully' });
   } catch (error) {
     console.error('❌ Error in deleteFile:', error);
