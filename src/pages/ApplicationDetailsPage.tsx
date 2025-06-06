@@ -1,5 +1,5 @@
 // File: src/pages/ApplicationDetailsPage.tsx
-// Purpose: Complete application view with PROGRAM-SPECIFIC documents, approval mechanism, and file management
+// Purpose: Complete application view with ENHANCED admin actions and status management
 
 import React, { useEffect, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
@@ -20,11 +20,13 @@ import {
   MapPin,
   Award,
   Eye,
-  MessageSquare
+  MessageSquare,
+  Send,
+  ArrowLeft
 } from 'lucide-react';
 import useApplicationStore from '../stores/applicationStore';
 import useApplicationDocumentStore from '../stores/applicationDocumentStore';
-import useProgramCertificateRequirementStore from '../stores/programCertificateRequirementStore'; // ✅ UPDATED
+import useProgramCertificateRequirementStore from '../stores/programCertificateRequirementStore';
 import useAuthStore from '../stores/authStore';
 
 const ApplicationDetailsPage = () => {
@@ -48,7 +50,6 @@ const ApplicationDetailsPage = () => {
     getDocumentVerificationStatus
   } = useApplicationDocumentStore();
 
-  // ✅ UPDATED: Use program certificate requirements instead of all certificate types
   const { 
     requirements: programRequirements, 
     fetchProgramRequirements 
@@ -71,10 +72,8 @@ const ApplicationDetailsPage = () => {
     }
   }, [id]);
 
-  // ✅ UPDATED: Fetch program-specific requirements when application is loaded
   useEffect(() => {
     if (currentApplication?.programId) {
-      // Extract the actual ID from the programId (which might be populated object)
       const programId = typeof currentApplication.programId === 'string' 
         ? currentApplication.programId 
         : currentApplication.programId._id;
@@ -107,20 +106,47 @@ const ApplicationDetailsPage = () => {
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'approved': return 'bg-green-100 text-green-800';
-      case 'rejected': return 'bg-red-100 text-red-800';
-      case 'under_review': return 'bg-yellow-100 text-yellow-800';
-      case 'submitted': return 'bg-blue-100 text-blue-800';
-      default: return 'bg-gray-100 text-gray-800';
+      case 'approved': return 'bg-green-100 text-green-800 border-green-200';
+      case 'rejected': return 'bg-red-100 text-red-800 border-red-200';
+      case 'under_review': return 'bg-purple-100 text-purple-800 border-purple-200';
+      case 'submitted': return 'bg-blue-100 text-blue-800 border-blue-200';
+      case 'draft': return 'bg-gray-100 text-gray-800 border-gray-200';
+      default: return 'bg-gray-100 text-gray-800 border-gray-200';
     }
   };
 
-  // ✅ UPDATED: Get required documents based on program requirements
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case 'approved': return <CheckCircle className="h-5 w-5 text-green-600" />;
+      case 'rejected': return <XCircle className="h-5 w-5 text-red-600" />;
+      case 'under_review': return <Clock className="h-5 w-5 text-purple-600" />;
+      case 'submitted': return <Send className="h-5 w-5 text-blue-600" />;
+      case 'draft': return <FileText className="h-5 w-5 text-gray-600" />;
+      default: return <FileText className="h-5 w-5 text-gray-600" />;
+    }
+  };
+
+  const getStatusDescription = (status: string) => {
+    switch (status) {
+      case 'draft':
+        return 'Application is in draft mode. Student can make changes and submit when ready.';
+      case 'submitted':
+        return 'Application has been submitted by the student and is awaiting initial review.';
+      case 'under_review':
+        return 'Application is currently under detailed review by administrators.';
+      case 'approved':
+        return 'Application has been approved. Student has been notified of acceptance.';
+      case 'rejected':
+        return 'Application has been rejected. Student has been notified with reasons.';
+      default:
+        return 'Application status information.';
+    }
+  };
+
   const getRequiredDocumentsForProgram = () => {
     return programRequirements.filter(req => req.isRequired && req.isActive);
   };
 
-  // ✅ UPDATED: Calculate document completion status based on program requirements
   const getDocumentCompletionStatus = () => {
     const requiredProgramDocs = getRequiredDocumentsForProgram();
     const submittedDocs = documents.filter(doc => 
@@ -143,7 +169,6 @@ const ApplicationDetailsPage = () => {
     if (user?.role !== 'admin' && user?.role !== 'program_admin') return false;
     if (currentApplication?.status !== 'submitted' && currentApplication?.status !== 'under_review') return false;
     
-    // Check if all required documents are verified
     const docStatus = getDocumentCompletionStatus();
     return docStatus.completionPercentage === 100 && docStatus.verificationPercentage === 100;
   };
@@ -239,9 +264,12 @@ const ApplicationDetailsPage = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-500">Application Status</p>
-                <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(currentApplication.status)}`}>
+                <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium border ${getStatusColor(currentApplication.status)}`}>
                   {currentApplication.status.replace('_', ' ').toUpperCase()}
                 </span>
+              </div>
+              <div className="flex-shrink-0">
+                {getStatusIcon(currentApplication.status)}
               </div>
             </div>
           </div>
@@ -285,7 +313,7 @@ const ApplicationDetailsPage = () => {
           </div>
         </div>
 
-        {/* ✅ UPDATED: Program-specific approval warning */}
+        {/* Program-specific approval warning */}
         {(user?.role === 'admin' || user?.role === 'program_admin') && 
          currentApplication.status === 'submitted' && 
          docStatus.completionPercentage < 100 && (
@@ -459,7 +487,7 @@ const ApplicationDetailsPage = () => {
             </div>
           )}
 
-          {/* ✅ UPDATED: Documents Tab with Program-Specific Requirements */}
+          {/* Documents Tab with Program-Specific Requirements */}
           {activeTab === 'documents' && (
             <div className="space-y-6">
               <div className="flex justify-between items-center">
@@ -511,7 +539,7 @@ const ApplicationDetailsPage = () => {
                 </div>
               </div>
 
-              {/* ✅ UPDATED: Documents List - Program-Specific */}
+              {/* Documents List - Program-Specific */}
               <div className="space-y-4">
                 {getRequiredDocumentsForProgram().map((requirement) => {
                   const document = documents.find(doc => doc.certificateTypeId._id === requirement.certificateTypeId._id);
@@ -526,7 +554,6 @@ const ApplicationDetailsPage = () => {
                           <div>
                             <h4 className="text-sm font-medium text-gray-900">{requirement.certificateTypeId.name}</h4>
                             <p className="text-sm text-gray-500">{requirement.certificateTypeId.description}</p>
-                            {/* ✅ UPDATED: Show program-specific special instructions */}
                             {requirement.specialInstructions && (
                               <p className="text-sm text-blue-600 mt-1">
                                 <strong>Special Instructions:</strong> {requirement.specialInstructions}
@@ -578,7 +605,6 @@ const ApplicationDetailsPage = () => {
                   );
                 })}
 
-                {/* ✅ Show message if no program requirements found */}
                 {getRequiredDocumentsForProgram().length === 0 && (
                   <div className="text-center py-8">
                     <FileText className="mx-auto h-12 w-12 text-gray-400" />
@@ -658,61 +684,483 @@ const ApplicationDetailsPage = () => {
         </div>
       </div>
 
-      {/* Admin Actions */}
-      {(user?.role === 'admin' || user?.role === 'program_admin') && 
-       ['submitted', 'under_review'].includes(currentApplication.status) && (
+      {/* ENHANCED Admin Actions */}
+      {(user?.role === 'admin' || user?.role === 'program_admin') && (
         <div className="bg-white shadow rounded-lg p-6">
-          <h3 className="text-lg leading-6 font-medium text-gray-900 mb-4">
-            Review Actions
+          <h3 className="text-lg leading-6 font-medium text-gray-900 mb-6">
+            Admin Actions & Status Management
           </h3>
           
-          {canApprove() ? (
-            <div className="flex space-x-3">
-              <button
-                onClick={() => openApprovalModal('approved')}
-                className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
-              >
-                <CheckCircle className="h-4 w-4 mr-2" />
-                Approve Application
-              </button>
-              <button
-                onClick={() => openApprovalModal('rejected')}
-                className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
-              >
-                <XCircle className="h-4 w-4 mr-2" />
-                Reject Application
-              </button>
-              <button
-                onClick={() => handleStatusChange('under_review')}
-                className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-              >
-                <Clock className="h-4 w-4 mr-2" />
-                Mark Under Review
-              </button>
-            </div>
-          ) : (
-            <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4">
-              <div className="flex">
-                <AlertTriangle className="h-5 w-5 text-yellow-400" />
-                <div className="ml-3">
-                  <h3 className="text-sm font-medium text-yellow-800">
-                    Prerequisites Not Met
-                  </h3>
-                  <p className="text-sm text-yellow-700 mt-1">
-                    All program-specific required documents must be uploaded and verified before approval.
+          {/* Current Status Display */}
+          <div className="mb-6 p-4 bg-gray-50 rounded-lg border">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center space-x-3">
+                <div className="flex-shrink-0">
+                  {getStatusIcon(currentApplication.status)}
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-gray-700">Current Status</p>
+                  <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium border ${getStatusColor(currentApplication.status)}`}>
+                    {currentApplication.status.replace('_', ' ').toUpperCase()}
+                  </span>
+                </div>
+              </div>
+              {currentApplication.reviewedBy && currentApplication.reviewedAt && (
+                <div className="text-right">
+                  <p className="text-xs text-gray-500">
+                    Last reviewed: {new Date(currentApplication.reviewedAt).toLocaleString()}
                   </p>
-                  <div className="mt-2">
-                    <Link
-                      to={`/applications/${id}/documents/verify`}
-                      className="text-sm text-yellow-800 underline hover:text-yellow-900"
-                    >
-                      Go to Document Verification →
-                    </Link>
-                  </div>
+                  <p className="text-xs text-gray-400">
+                    By: {currentApplication.reviewedBy.email || 'System'}
+                  </p>
+                </div>
+              )}
+            </div>
+            
+            <div className="bg-blue-50 border-l-4 border-blue-400 p-3 rounded-r">
+              <p className="text-sm text-blue-800">
+                {getStatusDescription(currentApplication.status)}
+              </p>
+            </div>
+          </div>
+
+          {/* Document Status Quick View */}
+          <div className="mb-6 p-4 bg-gray-50 rounded-lg border">
+            <h4 className="text-sm font-medium text-gray-700 mb-3">Document Verification Status</h4>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="text-center">
+                <p className="text-lg font-bold text-blue-600">{docStatus.required}</p>
+                <p className="text-xs text-gray-500">Required</p>
+              </div>
+              <div className="text-center">
+                <p className="text-lg font-bold text-green-600">{docStatus.submitted}</p>
+                <p className="text-xs text-gray-500">Submitted</p>
+              </div>
+              <div className="text-center">
+                <p className="text-lg font-bold text-purple-600">{docStatus.verified}</p>
+                <p className="text-xs text-gray-500">Verified</p>
+              </div>
+              <div className="text-center">
+                <p className="text-lg font-bold text-red-600">{docStatus.required - docStatus.submitted}</p>
+                <p className="text-xs text-gray-500">Missing</p>
+              </div>
+            </div>
+            
+            <div className="mt-3 space-y-2">
+              <div>
+                <div className="flex justify-between text-xs">
+                  <span>Completion: {docStatus.completionPercentage}%</span>
+                </div>
+                <div className="bg-gray-200 rounded-full h-2">
+                  <div 
+                    className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                    style={{ width: `${docStatus.completionPercentage}%` }}
+                  ></div>
+                </div>
+              </div>
+              <div>
+                <div className="flex justify-between text-xs">
+                  <span>Verification: {docStatus.verificationPercentage}%</span>
+                </div>
+                <div className="bg-gray-200 rounded-full h-2">
+                  <div 
+                    className="bg-green-600 h-2 rounded-full transition-all duration-300"
+                    style={{ width: `${docStatus.verificationPercentage}%` }}
+                  ></div>
                 </div>
               </div>
             </div>
+          </div>
+          
+          {/* Status-specific Actions */}
+          {currentApplication.status === 'draft' && (
+            <div className="space-y-4">
+              <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
+                <div className="flex items-start">
+                  <FileText className="h-5 w-5 text-blue-400 mt-0.5" />
+                  <div className="ml-3">
+                    <h3 className="text-sm font-medium text-blue-800">Draft Application</h3>
+                    <p className="text-sm text-blue-700 mt-1">
+                      This application is still in draft mode. The student can continue editing, or you can help move it forward in the process.
+                    </p>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="flex flex-wrap gap-3">
+                <button
+                  onClick={() => handleStatusChange('submitted', 'Application submitted by admin on behalf of student')}
+                  className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                >
+                  <Send className="h-4 w-4 mr-2" />
+                  Mark as Submitted
+                </button>
+                <button
+                  onClick={() => openApprovalModal('under_review')}
+                  className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                >
+                  <Clock className="h-4 w-4 mr-2" />
+                  Move to Review
+                </button>
+                <button
+                  onClick={() => openApprovalModal('rejected')}
+                  className="inline-flex items-center px-4 py-2 border border-red-300 rounded-md shadow-sm text-sm font-medium text-red-700 bg-red-50 hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+                >
+                  <XCircle className="h-4 w-4 mr-2" />
+                  Reject (Incomplete)
+                </button>
+              </div>
+            </div>
           )}
+          
+          {currentApplication.status === 'submitted' && (
+            <div className="space-y-4">
+              <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4">
+                <div className="flex items-start">
+                  <Send className="h-5 w-5 text-yellow-400 mt-0.5" />
+                  <div className="ml-3">
+                    <h3 className="text-sm font-medium text-yellow-800">Submitted Application</h3>
+                    <p className="text-sm text-yellow-700 mt-1">
+                      Application is ready for review. Verify all documents and information before making a decision.
+                    </p>
+                  </div>
+                </div>
+              </div>
+              
+              {canApprove() ? (
+                <div className="space-y-3">
+                  <div className="bg-green-50 border border-green-200 rounded-md p-3">
+                    <p className="text-sm text-green-800">
+                      ✅ All requirements met. Application ready for approval.
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-3">
+                    <button
+                      onClick={() => openApprovalModal('approved')}
+                      className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+                    >
+                      <CheckCircle className="h-4 w-4 mr-2" />
+                      Approve Application
+                    </button>
+                    <button
+                      onClick={() => openApprovalModal('rejected')}
+                      className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+                    >
+                      <XCircle className="h-4 w-4 mr-2" />
+                      Reject Application
+                    </button>
+                    <button
+                      onClick={() => handleStatusChange('under_review', 'Moved to detailed review for comprehensive evaluation')}
+                      className="inline-flex items-center px-4 py-2 border border-purple-300 rounded-md shadow-sm text-sm font-medium text-purple-700 bg-purple-50 hover:bg-purple-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
+                    >
+                      <Clock className="h-4 w-4 mr-2" />
+                      Move to Detailed Review
+                    </button>
+                    <button
+                      onClick={() => openApprovalModal('draft')}
+                      className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                    >
+                      <Edit2 className="h-4 w-4 mr-2" />
+                      Send to Draft
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="bg-red-50 border border-red-200 rounded-md p-4">
+                  <div className="flex">
+                    <AlertTriangle className="h-5 w-5 text-red-400" />
+                    <div className="ml-3">
+                      <h3 className="text-sm font-medium text-red-800">
+                        Cannot Approve - Missing Requirements
+                      </h3>
+                      <p className="text-sm text-red-700 mt-1">
+                        Complete document verification before approval is possible:
+                      </p>
+                      <ul className="text-sm text-red-700 mt-2 list-disc list-inside space-y-1">
+                        <li>Missing Documents: {docStatus.required - docStatus.submitted}</li>
+                        <li>Unverified Documents: {docStatus.submitted - docStatus.verified}</li>
+                        <li>Completion Rate: {docStatus.completionPercentage}%</li>
+                      </ul>
+                      <div className="mt-4 flex flex-wrap gap-3">
+                        <Link
+                          to={`/applications/${id}/documents/verify`}
+                          className="inline-flex items-center text-sm bg-red-100 text-red-800 px-3 py-2 rounded-md hover:bg-red-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+                        >
+                          <Eye className="h-4 w-4 mr-2" />
+                          Verify Documents →
+                        </Link>
+                        <button
+                          onClick={() => openApprovalModal('rejected')}
+                          className="inline-flex items-center text-sm bg-red-600 text-white px-3 py-2 rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+                        >
+                          <XCircle className="h-4 w-4 mr-2" />
+                          Reject for Incomplete Docs
+                        </button>
+                        <button
+                          onClick={() => handleStatusChange('under_review', 'Moved to review despite incomplete documentation for special consideration')}
+                          className="inline-flex items-center text-sm bg-purple-600 text-white px-3 py-2 rounded-md hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
+                        >
+                          <Clock className="h-4 w-4 mr-2" />
+                          Force Review
+                        </button>
+                        <button
+                          onClick={() => openApprovalModal('draft')}
+                          className="inline-flex items-center text-sm bg-gray-600 text-white px-3 py-2 rounded-md hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
+                        >
+                          <Edit2 className="h-4 w-4 mr-2" />
+                          Send to Draft
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+          
+          {currentApplication.status === 'under_review' && (
+            <div className="space-y-4">
+              <div className="bg-purple-50 border border-purple-200 rounded-md p-4">
+                <div className="flex items-start">
+                  <Clock className="h-5 w-5 text-purple-400 mt-0.5" />
+                  <div className="ml-3">
+                    <h3 className="text-sm font-medium text-purple-800">Under Detailed Review</h3>
+                    <p className="text-sm text-purple-700 mt-1">
+                      Application is being carefully examined by the review committee. All aspects are being evaluated.
+                    </p>
+                  </div>
+                </div>
+              </div>
+              
+              {canApprove() ? (
+                <div className="space-y-3">
+                  <div className="bg-green-50 border border-green-200 rounded-md p-3">
+                    <p className="text-sm text-green-800">
+                      ✅ Review complete. All requirements satisfied for final decision.
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-3">
+                    <button
+                      onClick={() => openApprovalModal('approved')}
+                      className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+                    >
+                      <CheckCircle className="h-4 w-4 mr-2" />
+                      Approve After Review
+                    </button>
+                    <button
+                      onClick={() => openApprovalModal('rejected')}
+                      className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+                    >
+                      <XCircle className="h-4 w-4 mr-2" />
+                      Reject After Review
+                    </button>
+                    <button
+                      onClick={() => handleStatusChange('submitted', 'Moved back to submitted status for additional documentation or clarification')}
+                      className="inline-flex items-center px-4 py-2 border border-blue-300 rounded-md shadow-sm text-sm font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                    >
+                      <ArrowLeft className="h-4 w-4 mr-2" />
+                      Back to Submitted
+                    </button>
+                    <button
+                      onClick={() => openApprovalModal('draft')}
+                      className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                    >
+                      <Edit2 className="h-4 w-4 mr-2" />
+                      Send to Draft
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4">
+                  <div className="flex">
+                    <AlertTriangle className="h-5 w-5 text-yellow-400" />
+                    <div className="ml-3">
+                      <h3 className="text-sm font-medium text-yellow-800">Review Prerequisites Not Met</h3>
+                      <p className="text-sm text-yellow-700 mt-1">
+                        Complete document verification before making final decision.
+                      </p>
+                      <div className="mt-3 flex flex-wrap gap-3">
+                        <Link
+                          to={`/applications/${id}/documents/verify`}
+                          className="inline-flex items-center text-sm text-yellow-800 bg-yellow-100 px-3 py-2 rounded-md hover:bg-yellow-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500"
+                        >
+                          <Eye className="h-4 w-4 mr-2" />
+                          Complete Verification →
+                        </Link>
+                        <button
+                          onClick={() => handleStatusChange('submitted', 'Returned to submitted for additional documentation')}
+                          className="inline-flex items-center text-sm text-blue-700 bg-blue-100 px-3 py-2 rounded-md hover:bg-blue-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                        >
+                          <ArrowLeft className="h-4 w-4 mr-2" />
+                          Return to Submitted
+                        </button>
+                        <button
+                          onClick={() => openApprovalModal('draft')}
+                          className="inline-flex items-center text-sm text-gray-700 bg-gray-100 px-3 py-2 rounded-md hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
+                        >
+                          <Edit2 className="h-4 w-4 mr-2" />
+                          Send to Draft
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+          
+          {currentApplication.status === 'approved' && (
+            <div className="space-y-4">
+              <div className="bg-green-50 border border-green-200 rounded-md p-4">
+                <div className="flex items-start">
+                  <CheckCircle className="h-5 w-5 text-green-400 mt-0.5" />
+                  <div className="ml-3">
+                    <h3 className="text-sm font-medium text-green-800">Application Approved</h3>
+                    <p className="text-sm text-green-700 mt-1">
+                      Student has been accepted and notified. 
+                      {currentApplication.approvalComments && (
+                        <span className="block mt-2 font-medium">
+                          Approval Comments: "{currentApplication.approvalComments}"
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="bg-yellow-50 border border-yellow-200 rounded-md p-3">
+                <p className="text-sm text-yellow-800">
+                  ⚠️ Use caution when changing status of approved applications. Student has been notified of acceptance.
+                </p>
+              </div>
+              
+              <div className="flex flex-wrap gap-3">
+                <button
+                  onClick={() => openApprovalModal('rejected')}
+                  className="inline-flex items-center px-3 py-2 border border-red-300 rounded-md shadow-sm text-sm font-medium text-red-700 bg-red-50 hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+                >
+                  <XCircle className="h-4 w-4 mr-2" />
+                  Revoke Approval
+                </button>
+                <button
+                  onClick={() => handleStatusChange('under_review', 'Moved back to review for reconsideration due to new information')}
+                  className="inline-flex items-center px-3 py-2 border border-purple-300 rounded-md shadow-sm text-sm font-medium text-purple-700 bg-purple-50 hover:bg-purple-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
+                >
+                  <Clock className="h-4 w-4 mr-2" />
+                  Reopen for Review
+                </button>
+              </div>
+            </div>
+          )}
+          
+          {currentApplication.status === 'rejected' && (
+            <div className="space-y-4">
+              <div className="bg-red-50 border border-red-200 rounded-md p-4">
+                <div className="flex items-start">
+                  <XCircle className="h-5 w-5 text-red-400 mt-0.5" />
+                  <div className="ml-3">
+                    <h3 className="text-sm font-medium text-red-800">Application Rejected</h3>
+                    <p className="text-sm text-red-700 mt-1">
+                      Student has been notified of rejection. 
+                      {currentApplication.approvalComments && (
+                        <span className="block mt-2 font-medium">
+                          Rejection Reason: "{currentApplication.approvalComments}"
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="bg-blue-50 border border-blue-200 rounded-md p-3">
+                <p className="text-sm text-blue-800">
+                  💡 Rejected applications can be reconsidered if new information becomes available or errors are discovered.
+                </p>
+              </div>
+              
+              <div className="flex flex-wrap gap-3">
+                <button
+                  onClick={() => openApprovalModal('approved')}
+                  className="inline-flex items-center px-3 py-2 border border-green-300 rounded-md shadow-sm text-sm font-medium text-green-700 bg-green-50 hover:bg-green-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+                >
+                  <CheckCircle className="h-4 w-4 mr-2" />
+                  Reverse to Approved
+                </button>
+                <button
+                  onClick={() => handleStatusChange('under_review', 'Reopened for reconsideration based on appeal or new information')}
+                  className="inline-flex items-center px-3 py-2 border border-purple-300 rounded-md shadow-sm text-sm font-medium text-purple-700 bg-purple-50 hover:bg-purple-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
+                >
+                  <Clock className="h-4 w-4 mr-2" />
+                  Reopen for Review
+                </button>
+                <button
+                  onClick={() => handleStatusChange('submitted', 'Moved back to submitted for re-evaluation with corrected information')}
+                  className="inline-flex items-center px-3 py-2 border border-blue-300 rounded-md shadow-sm text-sm font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                >
+                  <ArrowLeft className="h-4 w-4 mr-2" />
+                  Back to Submitted
+                </button>
+              </div>
+            </div>
+          )}
+          
+          {/* Additional Admin Tools */}
+          <div className="mt-6 pt-6 border-t border-gray-200">
+            <h4 className="text-sm font-medium text-gray-700 mb-4">Additional Admin Tools</h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-3">
+                <h5 className="text-xs font-medium text-gray-500 uppercase tracking-wide">Document Management</h5>
+                <div className="flex flex-wrap gap-2">
+                  <Link
+                    to={`/applications/${id}/documents`}
+                    className="inline-flex items-center px-3 py-2 border border-blue-300 rounded-md shadow-sm text-xs font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                  >
+                    <Upload className="h-3 w-3 mr-1" />
+                    Manage Documents
+                  </Link>
+                  <Link
+                    to={`/applications/${id}/documents/verify`}
+                    className="inline-flex items-center px-3 py-2 border border-purple-300 rounded-md shadow-sm text-xs font-medium text-purple-700 bg-purple-50 hover:bg-purple-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
+                  >
+                    <Eye className="h-3 w-3 mr-1" />
+                    Verify Documents
+                  </Link>
+                </div>
+              </div>
+              
+              <div className="space-y-3">
+                <h5 className="text-xs font-medium text-gray-500 uppercase tracking-wide">Application History</h5>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={() => setShowHistory(!showHistory)}
+                    className="inline-flex items-center px-3 py-2 border border-gray-300 rounded-md shadow-sm text-xs font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                  >
+                    <History className="h-3 w-3 mr-1" />
+                    {showHistory ? 'Hide History' : 'View History'}
+                  </button>
+                  <button
+                    onClick={() => {/* Add audit log functionality */}}
+                    className="inline-flex items-center px-3 py-2 border border-gray-300 rounded-md shadow-sm text-xs font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                  >
+                    <MessageSquare className="h-3 w-3 mr-1" />
+                    Audit Trail
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          {/* Quick Stats Footer */}
+          <div className="mt-6 pt-4 border-t border-gray-100 bg-gray-50 -mx-6 -mb-6 px-6 py-4 rounded-b-lg">
+            <div className="flex items-center justify-between text-xs text-gray-500">
+              <span>
+                Last Updated: {new Date(currentApplication.dateUpdated).toLocaleString()}
+              </span>
+              <span>
+                Application #{currentApplication.applicationNumber}
+              </span>
+            </div>
+          </div>
         </div>
       )}
 
@@ -728,22 +1176,33 @@ const ApplicationDetailsPage = () => {
               <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
                 <div className="sm:flex sm:items-start">
                   <div className={`mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full sm:mx-0 sm:h-10 sm:w-10 ${
-                    approvalForm.status === 'approved' ? 'bg-green-100' : 'bg-red-100'
+                    approvalForm.status === 'approved' ? 'bg-green-100' : 
+                    approvalForm.status === 'rejected' ? 'bg-red-100' :
+                    approvalForm.status === 'draft' ? 'bg-blue-100' : 'bg-gray-100'
                   }`}>
                     {approvalForm.status === 'approved' ? (
                       <CheckCircle className="h-6 w-6 text-green-600" />
-                    ) : (
+                    ) : approvalForm.status === 'rejected' ? (
                       <XCircle className="h-6 w-6 text-red-600" />
+                    ) : approvalForm.status === 'draft' ? (
+                      <Edit2 className="h-6 w-6 text-blue-600" />
+                    ) : (
+                      <FileText className="h-6 w-6 text-gray-600" />
                     )}
                   </div>
                   <div className="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left w-full">
                     <h3 className="text-lg leading-6 font-medium text-gray-900">
-                      {approvalForm.status === 'approved' ? 'Approve' : 'Reject'} Application
+                      {approvalForm.status === 'approved' ? 'Approve' : 
+                       approvalForm.status === 'rejected' ? 'Reject' : 
+                       approvalForm.status === 'draft' ? 'Send to Draft' : 'Update'} Application
                     </h3>
                     <div className="mt-2">
                       <p className="text-sm text-gray-500">
-                        Are you sure you want to {approvalForm.status === 'approved' ? 'approve' : 'reject'} this application?
-                        This action will notify the student and cannot be easily undone.
+                        {approvalForm.status === 'draft' ? (
+                          'Are you sure you want to send this application back to draft? The student will be able to edit and resubmit.'
+                        ) : (
+                          `Are you sure you want to ${approvalForm.status} this application? This action will notify the student and cannot be easily undone.`
+                        )}
                       </p>
                     </div>
                     <div className="mt-4">
@@ -756,7 +1215,7 @@ const ApplicationDetailsPage = () => {
                         rows={3}
                         required
                         className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-                        placeholder={`Please provide reason for ${approvalForm.status}...`}
+                        placeholder={`Please provide reason for ${approvalForm.status === 'draft' ? 'sending to draft' : approvalForm.status}...`}
                       />
                     </div>
                   </div>

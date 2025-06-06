@@ -1,9 +1,9 @@
 // File: src/pages/FilesPage.tsx
-// Purpose: File management dashboard for users
+// Purpose: File management dashboard for users - FIXED to show user-specific files
 
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Upload, Download, Trash2, Eye, FileText, Image, File, CheckCircle, XCircle } from 'lucide-react';
+import { Upload, Download, Trash2, Eye, FileText, Image, File, CheckCircle, XCircle, Search, Filter } from 'lucide-react';
 import useFileUploadStore from '../stores/fileUploadStore';
 import useAuthStore from '../stores/authStore';
 
@@ -11,10 +11,48 @@ const FilesPage = () => {
   const { user } = useAuthStore();
   const { files, loading, error, fetchFiles, deleteFile, downloadFile } = useFileUploadStore();
   const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterStatus, setFilterStatus] = useState('all'); // all, verified, pending
 
   useEffect(() => {
-    fetchFiles();
-  }, []);
+    // Fetch files with user filter
+    const filters: any = {};
+    
+    // Add user filter - only show current user's files
+    if (user?._id) {
+      filters.uploadedBy = user._id;
+    }
+    
+    // Add search filter if search term exists
+    if (searchTerm.trim()) {
+      filters.search = searchTerm.trim();
+    }
+    
+    // Add status filter
+    if (filterStatus !== 'all') {
+      filters.isVerified = filterStatus === 'verified';
+    }
+    
+    fetchFiles(filters);
+  }, [user?._id, searchTerm, filterStatus, fetchFiles]);
+
+  // Filter files on frontend as backup (in case backend doesn't filter properly)
+  const userFiles = files.filter(file => {
+    // Only show files uploaded by current user
+    const isUserFile = file.uploadedBy === user?._id;
+    
+    // Apply search filter
+    const matchesSearch = searchTerm === '' || 
+      file.originalName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (file.description && file.description.toLowerCase().includes(searchTerm.toLowerCase()));
+    
+    // Apply status filter
+    const matchesStatus = filterStatus === 'all' || 
+      (filterStatus === 'verified' && file.isVerified) ||
+      (filterStatus === 'pending' && !file.isVerified);
+    
+    return isUserFile && matchesSearch && matchesStatus;
+  });
 
   const formatFileSize = (bytes: number) => {
     if (bytes === 0) return '0 Bytes';
@@ -61,10 +99,28 @@ const FilesPage = () => {
   };
 
   const handleSelectAll = () => {
-    if (selectedFiles.length === files.length) {
+    if (selectedFiles.length === userFiles.length) {
       setSelectedFiles([]);
     } else {
-      setSelectedFiles(files.map(file => file.uuid));
+      setSelectedFiles(userFiles.map(file => file.uuid));
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedFiles.length === 0) return;
+    
+    if (window.confirm(`Are you sure you want to delete ${selectedFiles.length} selected file(s)?`)) {
+      try {
+        for (const uuid of selectedFiles) {
+          const file = userFiles.find(f => f.uuid === uuid);
+          if (file) {
+            await deleteFile(uuid);
+          }
+        }
+        setSelectedFiles([]);
+      } catch (err) {
+        console.error('Failed to delete files:', err);
+      }
     }
   };
 
@@ -81,6 +137,52 @@ const FilesPage = () => {
         </Link>
       </div>
 
+      {/* Filters and Search */}
+      <div className="bg-white shadow rounded-lg p-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700">Search Files</label>
+            <div className="mt-1 relative rounded-md shadow-sm">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <Search className="h-4 w-4 text-gray-400" />
+              </div>
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Search by filename or description..."
+                className="focus:ring-blue-500 focus:border-blue-500 block w-full pl-10 sm:text-sm border-gray-300 rounded-md"
+              />
+            </div>
+          </div>
+          
+          <div>
+            <label className="block text-sm font-medium text-gray-700">Status Filter</label>
+            <select
+              value={filterStatus}
+              onChange={(e) => setFilterStatus(e.target.value)}
+              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+            >
+              <option value="all">All Files</option>
+              <option value="verified">Verified Only</option>
+              <option value="pending">Pending Verification</option>
+            </select>
+          </div>
+          
+          <div className="flex items-end">
+            {selectedFiles.length > 0 && (
+              <button
+                onClick={handleBulkDelete}
+                className="inline-flex items-center px-3 py-2 border border-red-300 rounded-md shadow-sm text-sm font-medium text-red-700 bg-red-50 hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+              >
+                <Trash2 className="h-4 w-4 mr-1" />
+                Delete Selected ({selectedFiles.length})
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
       {/* File Statistics */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="bg-white overflow-hidden shadow rounded-lg">
@@ -92,7 +194,7 @@ const FilesPage = () => {
               <div className="ml-5 w-0 flex-1">
                 <dl>
                   <dt className="text-sm font-medium text-gray-500 truncate">Total Files</dt>
-                  <dd className="text-lg font-medium text-gray-900">{files.length}</dd>
+                  <dd className="text-lg font-medium text-gray-900">{userFiles.length}</dd>
                 </dl>
               </div>
             </div>
@@ -109,7 +211,7 @@ const FilesPage = () => {
                 <dl>
                   <dt className="text-sm font-medium text-gray-500 truncate">Verified</dt>
                   <dd className="text-lg font-medium text-gray-900">
-                    {files.filter(file => file.isVerified).length}
+                    {userFiles.filter(file => file.isVerified).length}
                   </dd>
                 </dl>
               </div>
@@ -127,7 +229,7 @@ const FilesPage = () => {
                 <dl>
                   <dt className="text-sm font-medium text-gray-500 truncate">Pending</dt>
                   <dd className="text-lg font-medium text-gray-900">
-                    {files.filter(file => !file.isVerified).length}
+                    {userFiles.filter(file => !file.isVerified).length}
                   </dd>
                 </dl>
               </div>
@@ -145,7 +247,7 @@ const FilesPage = () => {
                 <dl>
                   <dt className="text-sm font-medium text-gray-500 truncate">Total Size</dt>
                   <dd className="text-lg font-medium text-gray-900">
-                    {formatFileSize(files.reduce((total, file) => total + file.fileSize, 0))}
+                    {formatFileSize(userFiles.reduce((total, file) => total + file.fileSize, 0))}
                   </dd>
                 </dl>
               </div>
@@ -161,20 +263,29 @@ const FilesPage = () => {
         </div>
       ) : error ? (
         <div className="bg-red-100 p-4 rounded-md text-red-800">{error}</div>
-      ) : files.length === 0 ? (
+      ) : userFiles.length === 0 ? (
         <div className="text-center py-12">
           <FileText className="mx-auto h-12 w-12 text-gray-400" />
-          <h3 className="mt-2 text-sm font-medium text-gray-900">No files uploaded</h3>
-          <p className="mt-1 text-sm text-gray-500">Get started by uploading your first file.</p>
-          <div className="mt-6">
-            <Link
-              to="/files/upload"
-              className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
-            >
-              <Upload className="h-4 w-4 mr-2" />
-              Upload Files
-            </Link>
-          </div>
+          <h3 className="mt-2 text-sm font-medium text-gray-900">
+            {searchTerm || filterStatus !== 'all' ? 'No files match your filters' : 'No files uploaded'}
+          </h3>
+          <p className="mt-1 text-sm text-gray-500">
+            {searchTerm || filterStatus !== 'all' ? 
+              'Try adjusting your search or filter criteria.' : 
+              'Get started by uploading your first file.'
+            }
+          </p>
+          {!searchTerm && filterStatus === 'all' && (
+            <div className="mt-6">
+              <Link
+                to="/files/upload"
+                className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
+              >
+                <Upload className="h-4 w-4 mr-2" />
+                Upload Files
+              </Link>
+            </div>
+          )}
         </div>
       ) : (
         <div className="bg-white shadow overflow-hidden sm:rounded-md">
@@ -202,19 +313,19 @@ const FilesPage = () => {
             <div className="flex items-center">
               <input
                 type="checkbox"
-                checked={selectedFiles.length === files.length && files.length > 0}
+                checked={selectedFiles.length === userFiles.length && userFiles.length > 0}
                 onChange={handleSelectAll}
                 className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
               />
               <span className="ml-3 text-xs font-medium text-gray-500 uppercase tracking-wider">
-                File Name
+                File Name ({userFiles.length} files)
               </span>
             </div>
           </div>
 
           {/* Files List */}
           <ul className="divide-y divide-gray-200">
-            {files.map((file) => (
+            {userFiles.map((file) => (
               <li key={file.uuid}>
                 <div className="px-4 py-4 sm:px-6">
                   <div className="flex items-center justify-between">
@@ -256,13 +367,15 @@ const FilesPage = () => {
                         >
                           <Download className="h-4 w-4" />
                         </button>
-                        <button
-                          onClick={() => handleDelete(file.uuid, file.originalName)}
-                          className="text-gray-400 hover:text-red-600"
-                          title="Delete"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
+                        {!file.isVerified && (
+                          <button
+                            onClick={() => handleDelete(file.uuid, file.originalName)}
+                            className="text-gray-400 hover:text-red-600"
+                            title="Delete"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -270,6 +383,19 @@ const FilesPage = () => {
               </li>
             ))}
           </ul>
+        </div>
+      )}
+
+      {/* User Info Debug (only in development) */}
+      {process.env.NODE_ENV === 'development' && (
+        <div className="bg-gray-100 p-4 rounded-md text-sm">
+          <strong>Debug Info:</strong><br />
+          Current User ID: {user?._id || 'Not logged in'}<br />
+          User Role: {user?.role || 'Unknown'}<br />
+          Total Files in Store: {files.length}<br />
+          User-Specific Files: {userFiles.length}<br />
+          Search Term: {searchTerm || 'None'}<br />
+          Status Filter: {filterStatus}
         </div>
       )}
     </div>

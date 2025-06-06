@@ -1,5 +1,5 @@
 // File: src/stores/fileUploadStore.ts
-// Purpose: Zustand store for file upload state management
+// Purpose: Zustand store for file upload state management - FIXED for user-specific files
 
 import { create } from 'zustand';
 import axios from 'axios';
@@ -41,9 +41,29 @@ const useFileUploadStore = create<FileUploadState>((set, get) => ({
         }
       });
       
+      // Debug logging
+      console.log('🔍 Fetching files with filters:', filters);
+      console.log('📋 Query params:', queryParams.toString());
+      
       const { data } = await axios.get(`/api/files?${queryParams.toString()}`);
-      set({ files: data.files, loading: false });
-    } catch (error) {
+      
+      // Handle different response formats
+      let filesArray = [];
+      if (data.files) {
+        filesArray = data.files;
+      } else if (Array.isArray(data)) {
+        filesArray = data;
+      } else if (data.docs) {
+        filesArray = data.docs;
+      } else {
+        console.warn('⚠️ Unexpected response format:', data);
+        filesArray = [];
+      }
+      
+      console.log('✅ Files fetched successfully:', filesArray.length, 'files');
+      set({ files: filesArray, loading: false });
+    } catch (error: any) {
+      console.error('❌ Failed to fetch files:', error.response?.data || error.message);
       set({ 
         error: error.response?.data?.message || 'Failed to fetch files', 
         loading: false 
@@ -57,19 +77,26 @@ const useFileUploadStore = create<FileUploadState>((set, get) => ({
       
       const formData = new FormData();
       formData.append('file', file);
-      formData.append('description', description);
+      if (description) {
+        formData.append('description', description);
+      }
+      
+      console.log('📤 Uploading file:', file.name, 'Size:', file.size, 'bytes');
       
       const { data } = await axios.post('/api/files', formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
         onUploadProgress: (progressEvent) => {
-          const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total);
-          set({ uploadProgress: progress });
+          if (progressEvent.total) {
+            const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+            set({ uploadProgress: progress });
+            console.log(`📊 Upload progress: ${progress}%`);
+          }
         },
       });
       
-      // Update files list
+      // Update files list - add new file to the beginning
       const currentFiles = get().files;
       set({ 
         files: [data, ...currentFiles], 
@@ -77,8 +104,10 @@ const useFileUploadStore = create<FileUploadState>((set, get) => ({
         uploadProgress: 0
       });
       
+      console.log('✅ File uploaded successfully:', data.originalName);
       return data;
-    } catch (error) {
+    } catch (error: any) {
+      console.error('❌ Upload failed:', error.response?.data || error.message);
       set({ 
         error: error.response?.data?.message || 'Failed to upload file', 
         uploading: false,
@@ -91,10 +120,15 @@ const useFileUploadStore = create<FileUploadState>((set, get) => ({
   getFileByUuid: async (uuid) => {
     try {
       set({ loading: true, error: null });
+      console.log('🔍 Fetching file by UUID:', uuid);
+      
       const { data } = await axios.get(`/api/files/${uuid}`);
       set({ currentFile: data, loading: false });
+      
+      console.log('✅ File fetched by UUID:', data.originalName);
       return data;
-    } catch (error) {
+    } catch (error: any) {
+      console.error('❌ Failed to fetch file by UUID:', error.response?.data || error.message);
       set({ 
         error: error.response?.data?.message || 'Failed to fetch file', 
         loading: false 
@@ -106,6 +140,7 @@ const useFileUploadStore = create<FileUploadState>((set, get) => ({
   downloadFile: async (uuid, filename) => {
     try {
       set({ loading: true, error: null });
+      console.log('⬇️ Downloading file:', filename);
       
       const response = await axios.get(`/api/files/${uuid}/download`, {
         responseType: 'blob',
@@ -122,7 +157,9 @@ const useFileUploadStore = create<FileUploadState>((set, get) => ({
       window.URL.revokeObjectURL(url);
       
       set({ loading: false });
-    } catch (error) {
+      console.log('✅ File downloaded successfully:', filename);
+    } catch (error: any) {
+      console.error('❌ Download failed:', error.response?.data || error.message);
       set({ 
         error: error.response?.data?.message || 'Failed to download file', 
         loading: false 
@@ -134,6 +171,8 @@ const useFileUploadStore = create<FileUploadState>((set, get) => ({
   verifyFile: async (uuid) => {
     try {
       set({ loading: true, error: null });
+      console.log('✅ Verifying file:', uuid);
+      
       const { data } = await axios.put(`/api/files/${uuid}/verify`);
       
       // Update files list
@@ -147,8 +186,10 @@ const useFileUploadStore = create<FileUploadState>((set, get) => ({
         loading: false 
       });
       
+      console.log('✅ File verified successfully');
       return data;
-    } catch (error) {
+    } catch (error: any) {
+      console.error('❌ Verification failed:', error.response?.data || error.message);
       set({ 
         error: error.response?.data?.message || 'Failed to verify file', 
         loading: false 
@@ -160,15 +201,20 @@ const useFileUploadStore = create<FileUploadState>((set, get) => ({
   deleteFile: async (uuid) => {
     try {
       set({ loading: true, error: null });
+      console.log('🗑️ Deleting file:', uuid);
+      
       await axios.delete(`/api/files/${uuid}`);
       
-      // Update files list
+      // Update files list - remove deleted file
       const filteredFiles = get().files.filter(file => file.uuid !== uuid);
       set({ 
         files: filteredFiles, 
         loading: false 
       });
-    } catch (error) {
+      
+      console.log('✅ File deleted successfully');
+    } catch (error: any) {
+      console.error('❌ Delete failed:', error.response?.data || error.message);
       set({ 
         error: error.response?.data?.message || 'Failed to delete file', 
         loading: false 
