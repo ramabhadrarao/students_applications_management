@@ -1,5 +1,4 @@
-// File: src/pages/ApplicationDetailsPage.tsx
-// Purpose: Complete application view with ENHANCED admin actions and status management
+// src/pages/ApplicationDetailsPage.tsx - Complete Enhanced View
 
 import React, { useEffect, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
@@ -9,7 +8,6 @@ import {
   CheckCircle, 
   XCircle, 
   Edit2, 
-  Download,
   History,
   Upload,
   AlertTriangle,
@@ -20,9 +18,15 @@ import {
   MapPin,
   Award,
   Eye,
-  MessageSquare,
   Send,
-  ArrowLeft
+  ArrowLeft,
+  GraduationCap,
+  Home,
+  FileCheck,
+  Users,
+  BookOpen,
+  Star,
+  Shield
 } from 'lucide-react';
 import useApplicationStore from '../stores/applicationStore';
 import useApplicationDocumentStore from '../stores/applicationDocumentStore';
@@ -56,7 +60,7 @@ const ApplicationDetailsPage = () => {
   } = useProgramCertificateRequirementStore();
 
   const [showHistory, setShowHistory] = useState(false);
-  const [activeTab, setActiveTab] = useState('details');
+  const [activeTab, setActiveTab] = useState('personal');
   const [approvalModal, setApprovalModal] = useState(false);
   const [approvalForm, setApprovalForm] = useState({
     status: '',
@@ -126,29 +130,14 @@ const ApplicationDetailsPage = () => {
     }
   };
 
-  const getStatusDescription = (status: string) => {
-    switch (status) {
-      case 'draft':
-        return 'Application is in draft mode. Student can make changes and submit when ready.';
-      case 'submitted':
-        return 'Application has been submitted by the student and is awaiting initial review.';
-      case 'under_review':
-        return 'Application is currently under detailed review by administrators.';
-      case 'approved':
-        return 'Application has been approved. Student has been notified of acceptance.';
-      case 'rejected':
-        return 'Application has been rejected. Student has been notified with reasons.';
-      default:
-        return 'Application status information.';
-    }
-  };
-
-  const getRequiredDocumentsForProgram = () => {
-    return programRequirements.filter(req => req.isRequired && req.isActive);
+  const canEdit = () => {
+    return user?.role === 'student' && 
+           currentApplication?.userId === user._id && 
+           ['draft', 'rejected'].includes(currentApplication?.status || '');
   };
 
   const getDocumentCompletionStatus = () => {
-    const requiredProgramDocs = getRequiredDocumentsForProgram();
+    const requiredProgramDocs = programRequirements.filter(req => req.isRequired && req.isActive);
     const submittedDocs = documents.filter(doc => 
       requiredProgramDocs.some(req => req.certificateTypeId._id === doc.certificateTypeId._id)
     );
@@ -163,20 +152,6 @@ const ApplicationDetailsPage = () => {
       verificationPercentage: submittedDocs.length > 0 ? 
         Math.round((verifiedDocs.length / submittedDocs.length) * 100) : 0
     };
-  };
-
-  const canApprove = () => {
-    if (user?.role !== 'admin' && user?.role !== 'program_admin') return false;
-    if (currentApplication?.status !== 'submitted' && currentApplication?.status !== 'under_review') return false;
-    
-    const docStatus = getDocumentCompletionStatus();
-    return docStatus.completionPercentage === 100 && docStatus.verificationPercentage === 100;
-  };
-
-  const canEdit = () => {
-    return user?.role === 'student' && 
-           currentApplication?.userId === user._id && 
-           ['draft', 'rejected'].includes(currentApplication?.status || '');
   };
 
   if (loading) {
@@ -227,14 +202,16 @@ const ApplicationDetailsPage = () => {
                 {currentApplication.studentName}
               </div>
               <div className="mt-2 flex items-center text-sm text-gray-500">
-                <FileText className="flex-shrink-0 mr-1.5 h-5 w-5 text-gray-400" />
+                <BookOpen className="flex-shrink-0 mr-1.5 h-5 w-5 text-gray-400" />
                 {typeof currentApplication.programId === 'string' 
                   ? currentApplication.programId 
                   : currentApplication.programId?.programName}
               </div>
               <div className="mt-2 flex items-center text-sm text-gray-500">
                 <Calendar className="flex-shrink-0 mr-1.5 h-5 w-5 text-gray-400" />
-                Submitted: {new Date(currentApplication.submittedAt || currentApplication.dateCreated).toLocaleDateString()}
+                {currentApplication.submittedAt 
+                  ? `Submitted: ${new Date(currentApplication.submittedAt).toLocaleDateString()}`
+                  : `Created: ${new Date(currentApplication.dateCreated).toLocaleDateString()}`}
               </div>
             </div>
           </div>
@@ -258,7 +235,7 @@ const ApplicationDetailsPage = () => {
           </div>
         </div>
 
-        {/* Status and Document Progress */}
+        {/* Status and Progress Display */}
         <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
           <div className="bg-gray-50 rounded-lg p-4">
             <div className="flex items-center justify-between">
@@ -312,27 +289,6 @@ const ApplicationDetailsPage = () => {
             </p>
           </div>
         </div>
-
-        {/* Program-specific approval warning */}
-        {(user?.role === 'admin' || user?.role === 'program_admin') && 
-         currentApplication.status === 'submitted' && 
-         docStatus.completionPercentage < 100 && (
-          <div className="mt-4 bg-yellow-50 border border-yellow-200 rounded-md p-4">
-            <div className="flex">
-              <AlertTriangle className="h-5 w-5 text-yellow-400" />
-              <div className="ml-3">
-                <h3 className="text-sm font-medium text-yellow-800">
-                  Cannot Approve Yet - Program Requirements Not Met
-                </h3>
-                <p className="text-sm text-yellow-700 mt-1">
-                  All program-specific required documents must be uploaded and verified before this application can be approved.
-                  Missing: {docStatus.required - docStatus.submitted} documents, 
-                  Unverified: {docStatus.submitted - docStatus.verified} documents.
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Tabs */}
@@ -340,7 +296,10 @@ const ApplicationDetailsPage = () => {
         <div className="border-b border-gray-200">
           <nav className="-mb-px flex space-x-8 px-6" aria-label="Tabs">
             {[
-              { id: 'details', name: 'Application Details', icon: FileText },
+              { id: 'personal', name: 'Personal Info', icon: User },
+              { id: 'education', name: 'Education', icon: GraduationCap },
+              { id: 'address', name: 'Address', icon: Home },
+              { id: 'additional', name: 'Additional', icon: FileCheck },
               { id: 'documents', name: 'Documents', icon: Upload, badge: documents.length },
               { id: 'history', name: 'History', icon: History }
             ].map((tab) => (
@@ -366,163 +325,469 @@ const ApplicationDetailsPage = () => {
         </div>
 
         <div className="p-6">
-          {/* Application Details Tab */}
-          {activeTab === 'details' && (
+          {/* Personal Information Tab */}
+          {activeTab === 'personal' && (
             <div className="space-y-6">
-              {/* Personal Information */}
-              <div>
-                <h3 className="text-lg leading-6 font-medium text-gray-900 mb-4">
-                  Personal Information
-                </h3>
-                <div className="grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-2">
+              <h3 className="text-lg leading-6 font-medium text-gray-900 mb-4">
+                Personal Information
+              </h3>
+              <div className="grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-2">
+                <div className="flex items-center space-x-3">
+                  <User className="h-5 w-5 text-gray-400" />
+                  <div>
+                    <dt className="text-sm font-medium text-gray-500">Student Name</dt>
+                    <dd className="mt-1 text-sm text-gray-900">{currentApplication.studentName}</dd>
+                  </div>
+                </div>
+                
+                <div className="flex items-center space-x-3">
+                  <Users className="h-5 w-5 text-gray-400" />
+                  <div>
+                    <dt className="text-sm font-medium text-gray-500">Father's Name</dt>
+                    <dd className="mt-1 text-sm text-gray-900">{currentApplication.fatherName}</dd>
+                  </div>
+                </div>
+                
+                <div className="flex items-center space-x-3">
+                  <Users className="h-5 w-5 text-gray-400" />
+                  <div>
+                    <dt className="text-sm font-medium text-gray-500">Mother's Name</dt>
+                    <dd className="mt-1 text-sm text-gray-900">{currentApplication.motherName}</dd>
+                  </div>
+                </div>
+                
+                <div className="flex items-center space-x-3">
+                  <Calendar className="h-5 w-5 text-gray-400" />
+                  <div>
+                    <dt className="text-sm font-medium text-gray-500">Date of Birth</dt>
+                    <dd className="mt-1 text-sm text-gray-900">
+                      {new Date(currentApplication.dateOfBirth).toLocaleDateString()}
+                    </dd>
+                  </div>
+                </div>
+                
+                <div className="flex items-center space-x-3">
+                  <User className="h-5 w-5 text-gray-400" />
+                  <div>
+                    <dt className="text-sm font-medium text-gray-500">Gender</dt>
+                    <dd className="mt-1 text-sm text-gray-900">{currentApplication.gender}</dd>
+                  </div>
+                </div>
+                
+                {currentApplication.aadharNumber && (
                   <div className="flex items-center space-x-3">
-                    <User className="h-5 w-5 text-gray-400" />
+                    <FileCheck className="h-5 w-5 text-gray-400" />
                     <div>
-                      <dt className="text-sm font-medium text-gray-500">Student Name</dt>
-                      <dd className="mt-1 text-sm text-gray-900">{currentApplication.studentName}</dd>
+                      <dt className="text-sm font-medium text-gray-500">Aadhar Number</dt>
+                      <dd className="mt-1 text-sm text-gray-900">{currentApplication.aadharNumber}</dd>
                     </div>
                   </div>
-                  
-                  <div className="flex items-center space-x-3">
-                    <Mail className="h-5 w-5 text-gray-400" />
-                    <div>
-                      <dt className="text-sm font-medium text-gray-500">Email</dt>
-                      <dd className="mt-1 text-sm text-gray-900">{currentApplication.email}</dd>
-                    </div>
+                )}
+                
+                <div className="flex items-center space-x-3">
+                  <Phone className="h-5 w-5 text-gray-400" />
+                  <div>
+                    <dt className="text-sm font-medium text-gray-500">Mobile Number</dt>
+                    <dd className="mt-1 text-sm text-gray-900">{currentApplication.mobileNumber}</dd>
                   </div>
-                  
+                </div>
+                
+                <div className="flex items-center space-x-3">
+                  <Mail className="h-5 w-5 text-gray-400" />
+                  <div>
+                    <dt className="text-sm font-medium text-gray-500">Email</dt>
+                    <dd className="mt-1 text-sm text-gray-900">{currentApplication.email}</dd>
+                  </div>
+                </div>
+                
+                {currentApplication.parentMobile && (
                   <div className="flex items-center space-x-3">
                     <Phone className="h-5 w-5 text-gray-400" />
                     <div>
-                      <dt className="text-sm font-medium text-gray-500">Mobile Number</dt>
-                      <dd className="mt-1 text-sm text-gray-900">{currentApplication.mobileNumber}</dd>
+                      <dt className="text-sm font-medium text-gray-500">Parent's Mobile</dt>
+                      <dd className="mt-1 text-sm text-gray-900">{currentApplication.parentMobile}</dd>
                     </div>
                   </div>
-                  
+                )}
+                
+                {currentApplication.guardianMobile && (
                   <div className="flex items-center space-x-3">
-                    <Calendar className="h-5 w-5 text-gray-400" />
+                    <Phone className="h-5 w-5 text-gray-400" />
                     <div>
-                      <dt className="text-sm font-medium text-gray-500">Date of Birth</dt>
-                      <dd className="mt-1 text-sm text-gray-900">
-                        {new Date(currentApplication.dateOfBirth).toLocaleDateString()}
-                      </dd>
+                      <dt className="text-sm font-medium text-gray-500">Guardian's Mobile</dt>
+                      <dd className="mt-1 text-sm text-gray-900">{currentApplication.guardianMobile}</dd>
                     </div>
                   </div>
-                  
-                  <div className="flex items-center space-x-3">
-                    <User className="h-5 w-5 text-gray-400" />
-                    <div>
-                      <dt className="text-sm font-medium text-gray-500">Father's Name</dt>
-                      <dd className="mt-1 text-sm text-gray-900">{currentApplication.fatherName}</dd>
-                    </div>
-                  </div>
-                  
-                  <div className="flex items-center space-x-3">
-                    <User className="h-5 w-5 text-gray-400" />
-                    <div>
-                      <dt className="text-sm font-medium text-gray-500">Mother's Name</dt>
-                      <dd className="mt-1 text-sm text-gray-900">{currentApplication.motherName}</dd>
-                    </div>
+                )}
+
+                {/* Reservation Details */}
+                <div className="flex items-center space-x-3">
+                  <Award className="h-5 w-5 text-gray-400" />
+                  <div>
+                    <dt className="text-sm font-medium text-gray-500">Reservation Category</dt>
+                    <dd className="mt-1 text-sm text-gray-900">{currentApplication.reservationCategory}</dd>
                   </div>
                 </div>
-              </div>
-
-              {/* Contact Information */}
-              <div>
-                <h3 className="text-lg leading-6 font-medium text-gray-900 mb-4">
-                  Contact Information
-                </h3>
-                <div className="grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-2">
-                  {currentApplication.parentMobile && (
-                    <div className="flex items-center space-x-3">
-                      <Phone className="h-5 w-5 text-gray-400" />
-                      <div>
-                        <dt className="text-sm font-medium text-gray-500">Parent's Mobile</dt>
-                        <dd className="mt-1 text-sm text-gray-900">{currentApplication.parentMobile}</dd>
-                      </div>
-                    </div>
-                  )}
-                  
-                  {currentApplication.guardianMobile && (
-                    <div className="flex items-center space-x-3">
-                      <Phone className="h-5 w-5 text-gray-400" />
-                      <div>
-                        <dt className="text-sm font-medium text-gray-500">Guardian's Mobile</dt>
-                        <dd className="mt-1 text-sm text-gray-900">{currentApplication.guardianMobile}</dd>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Reservation Details */}
-              <div>
-                <h3 className="text-lg leading-6 font-medium text-gray-900 mb-4">
-                  Reservation Details
-                </h3>
-                <div className="grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-3">
+                
+                {currentApplication.religion && (
                   <div className="flex items-center space-x-3">
-                    <Award className="h-5 w-5 text-gray-400" />
-                    <div>
-                      <dt className="text-sm font-medium text-gray-500">Category</dt>
-                      <dd className="mt-1 text-sm text-gray-900">{currentApplication.reservationCategory}</dd>
-                    </div>
-                  </div>
-                  
-                  {currentApplication.religion && (
+                    <Star className="h-5 w-5 text-gray-400" />
                     <div>
                       <dt className="text-sm font-medium text-gray-500">Religion</dt>
                       <dd className="mt-1 text-sm text-gray-900">{currentApplication.religion}</dd>
                     </div>
-                  )}
-                  
-                  {currentApplication.caste && (
+                  </div>
+                )}
+                
+                {currentApplication.caste && (
+                  <div className="flex items-center space-x-3">
+                    <Star className="h-5 w-5 text-gray-400" />
                     <div>
                       <dt className="text-sm font-medium text-gray-500">Caste</dt>
                       <dd className="mt-1 text-sm text-gray-900">{currentApplication.caste}</dd>
                     </div>
-                  )}
-                </div>
+                  </div>
+                )}
+
+                {currentApplication.isPhysicallyHandicapped && (
+                  <div className="flex items-center space-x-3">
+                    <Shield className="h-5 w-5 text-orange-400" />
+                    <div>
+                      <dt className="text-sm font-medium text-gray-500">Physically Handicapped</dt>
+                      <dd className="mt-1 text-sm text-orange-600 font-medium">Yes</dd>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}
 
-          {/* Documents Tab with Program-Specific Requirements */}
+          {/* Education Tab */}
+          {activeTab === 'education' && (
+            <div className="space-y-6">
+              <h3 className="text-lg leading-6 font-medium text-gray-900 mb-4">
+                Education Details
+              </h3>
+              
+              {/* Intermediate Details */}
+              <div className="bg-blue-50 rounded-lg p-4">
+                <h4 className="text-md font-medium text-blue-900 mb-3">Intermediate/+2 Details</h4>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  {currentApplication.interBoard && (
+                    <div>
+                      <dt className="text-sm font-medium text-gray-500">Board/University</dt>
+                      <dd className="mt-1 text-sm text-gray-900">{currentApplication.interBoard}</dd>
+                    </div>
+                  )}
+                  
+                  {currentApplication.interHallTicketNumber && (
+                    <div>
+                      <dt className="text-sm font-medium text-gray-500">Inter Hall Ticket</dt>
+                      <dd className="mt-1 text-sm text-gray-900">{currentApplication.interHallTicketNumber}</dd>
+                    </div>
+                  )}
+                  
+                  {currentApplication.sscHallTicketNumber && (
+                    <div>
+                      <dt className="text-sm font-medium text-gray-500">SSC Hall Ticket</dt>
+                      <dd className="mt-1 text-sm text-gray-900">{currentApplication.sscHallTicketNumber}</dd>
+                    </div>
+                  )}
+                  
+                  {currentApplication.interPassYear && (
+                    <div>
+                      <dt className="text-sm font-medium text-gray-500">Pass Year</dt>
+                      <dd className="mt-1 text-sm text-gray-900">{currentApplication.interPassYear}</dd>
+                    </div>
+                  )}
+                  
+                  {currentApplication.interPassoutType && (
+                    <div>
+                      <dt className="text-sm font-medium text-gray-500">Passout Type</dt>
+                      <dd className="mt-1 text-sm text-gray-900">{currentApplication.interPassoutType}</dd>
+                    </div>
+                  )}
+                  
+                  {currentApplication.interCourseName && (
+                    <div>
+                      <dt className="text-sm font-medium text-gray-500">Course</dt>
+                      <dd className="mt-1 text-sm text-gray-900">{currentApplication.interCourseName}</dd>
+                    </div>
+                  )}
+                  
+                  {currentApplication.interMedium && (
+                    <div>
+                      <dt className="text-sm font-medium text-gray-500">Medium</dt>
+                      <dd className="mt-1 text-sm text-gray-900">{currentApplication.interMedium}</dd>
+                    </div>
+                  )}
+                  
+                  {currentApplication.interSecondLanguage && (
+                    <div>
+                      <dt className="text-sm font-medium text-gray-500">Second Language</dt>
+                      <dd className="mt-1 text-sm text-gray-900">{currentApplication.interSecondLanguage}</dd>
+                    </div>
+                  )}
+                  
+                  {currentApplication.interCollegeName && (
+                    <div className="sm:col-span-2 lg:col-span-3">
+                      <dt className="text-sm font-medium text-gray-500">College Name</dt>
+                      <dd className="mt-1 text-sm text-gray-900">{currentApplication.interCollegeName}</dd>
+                    </div>
+                  )}
+                </div>
+
+                {/* Marks Details */}
+                {(currentApplication.interMarksSecured || currentApplication.interMaximumMarks || 
+                  currentApplication.interLanguagesPercentage || currentApplication.interGroupSubjectsPercentage) && (
+                  <div className="mt-4">
+                    <h5 className="text-sm font-medium text-blue-800 mb-2">Marks & Percentage</h5>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                      {currentApplication.interMarksSecured && (
+                        <div>
+                          <dt className="text-xs font-medium text-gray-500">Marks Secured</dt>
+                          <dd className="mt-1 text-sm text-gray-900">{currentApplication.interMarksSecured}</dd>
+                        </div>
+                      )}
+                      
+                      {currentApplication.interMaximumMarks && (
+                        <div>
+                          <dt className="text-xs font-medium text-gray-500">Maximum Marks</dt>
+                          <dd className="mt-1 text-sm text-gray-900">{currentApplication.interMaximumMarks}</dd>
+                        </div>
+                      )}
+                      
+                      {currentApplication.interLanguagesPercentage && (
+                        <div>
+                          <dt className="text-xs font-medium text-gray-500">Languages %</dt>
+                          <dd className="mt-1 text-sm text-gray-900">{currentApplication.interLanguagesPercentage}%</dd>
+                        </div>
+                      )}
+                      
+                      {currentApplication.interGroupSubjectsPercentage && (
+                        <div>
+                          <dt className="text-xs font-medium text-gray-500">Group Subjects %</dt>
+                          <dd className="mt-1 text-sm text-gray-900">{currentApplication.interGroupSubjectsPercentage}%</dd>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {currentApplication.bridgeCourse && (
+                  <div className="mt-4">
+                    <dt className="text-sm font-medium text-gray-500">Bridge Course</dt>
+                    <dd className="mt-1 text-sm text-gray-900">{currentApplication.bridgeCourse}</dd>
+                  </div>
+                )}
+              </div>
+
+              {/* Study History */}
+              {currentApplication.studyDetails && currentApplication.studyDetails.length > 0 && (
+                <div className="bg-gray-50 rounded-lg p-4">
+                  <h4 className="text-md font-medium text-gray-900 mb-3">Study History (Last 7 Years)</h4>
+                  <div className="space-y-3">
+                    {currentApplication.studyDetails.map((study, index) => (
+                      study.className || study.placeOfStudy || study.institutionName ? (
+                        <div key={index} className="bg-white rounded-md p-3">
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                            {study.className && (
+                              <div>
+                                <dt className="text-xs font-medium text-gray-500">Class/Year</dt>
+                                <dd className="text-sm text-gray-900">{study.className}</dd>
+                              </div>
+                            )}
+                            {study.placeOfStudy && (
+                              <div>
+                                <dt className="text-xs font-medium text-gray-500">Place</dt>
+                                <dd className="text-sm text-gray-900">{study.placeOfStudy}</dd>
+                              </div>
+                            )}
+                            {study.institutionName && (
+                              <div>
+                                <dt className="text-xs font-medium text-gray-500">Institution</dt>
+                                <dd className="text-sm text-gray-900">{study.institutionName}</dd>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ) : null
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Address Tab */}
+          {activeTab === 'address' && (
+            <div className="space-y-6">
+              <h3 className="text-lg leading-6 font-medium text-gray-900 mb-4">
+                Address Information
+              </h3>
+              
+              {/* Present Address */}
+              <div className="bg-blue-50 rounded-lg p-4">
+                <h4 className="text-md font-medium text-blue-900 mb-3 flex items-center">
+                  <Home className="h-4 w-4 mr-2" />
+                  Present Address
+                </h4>
+                {currentApplication.presentAddress && (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                    {Object.entries(currentApplication.presentAddress).map(([key, value]) => 
+                      value ? (
+                        <div key={key}>
+                          <dt className="text-xs font-medium text-gray-500 capitalize">
+                            {key === 'doorNo' ? 'Door No.' : key}
+                          </dt>
+                          <dd className="text-sm text-gray-900">{value}</dd>
+                        </div>
+                      ) : null
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Permanent Address */}
+              <div className="bg-green-50 rounded-lg p-4">
+                <h4 className="text-md font-medium text-green-900 mb-3 flex items-center">
+                  <MapPin className="h-4 w-4 mr-2" />
+                  Permanent Address
+                </h4>
+                {currentApplication.permanentAddress && (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                    {Object.entries(currentApplication.permanentAddress).map(([key, value]) => 
+                      value ? (
+                        <div key={key}>
+                          <dt className="text-xs font-medium text-gray-500 capitalize">
+                            {key === 'doorNo' ? 'Door No.' : key}
+                          </dt>
+                          <dd className="text-sm text-gray-900">{value}</dd>
+                        </div>
+                      ) : null
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Additional Information Tab */}
+          {activeTab === 'additional' && (
+            <div className="space-y-6">
+              <h3 className="text-lg leading-6 font-medium text-gray-900 mb-4">
+                Additional Information
+              </h3>
+              
+              <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+                {/* Government Numbers */}
+                <div className="bg-yellow-50 rounded-lg p-4">
+                  <h4 className="text-md font-medium text-yellow-900 mb-3">Government Numbers</h4>
+                  <div className="space-y-3">
+                    {currentApplication.sadaramNumber && (
+                      <div>
+                        <dt className="text-sm font-medium text-gray-500">Sadaram Number</dt>
+                        <dd className="mt-1 text-sm text-gray-900">{currentApplication.sadaramNumber}</dd>
+                      </div>
+                    )}
+                    
+                    {currentApplication.rationCardNumber && (
+                      <div>
+                        <dt className="text-sm font-medium text-gray-500">Ration Card Number</dt>
+                        <dd className="mt-1 text-sm text-gray-900">{currentApplication.rationCardNumber}</dd>
+                      </div>
+                    )}
+                    
+                    {currentApplication.oamdcNumber && (
+                      <div>
+                        <dt className="text-sm font-medium text-gray-500">OAMDC Number</dt>
+                        <dd className="mt-1 text-sm text-gray-900">{currentApplication.oamdcNumber}</dd>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Special Categories */}
+                <div className="bg-purple-50 rounded-lg p-4">
+                  <h4 className="text-md font-medium text-purple-900 mb-3">Special Categories</h4>
+                  <div className="space-y-3">
+                    {currentApplication.specialReservation && (
+                      <div>
+                        <dt className="text-sm font-medium text-gray-500">Special Reservation</dt>
+                        <dd className="mt-1 text-sm text-gray-900">{currentApplication.specialReservation}</dd>
+                      </div>
+                    )}
+                    
+                    <div>
+                      <dt className="text-sm font-medium text-gray-500">Physically Handicapped</dt>
+                      <dd className={`mt-1 text-sm font-medium ${currentApplication.isPhysicallyHandicapped ? 'text-orange-600' : 'text-green-600'}`}>
+                        {currentApplication.isPhysicallyHandicapped ? 'Yes' : 'No'}
+                      </dd>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Identification Marks */}
+              {currentApplication.identificationMarks && currentApplication.identificationMarks.some(mark => mark) && (
+                <div className="bg-gray-50 rounded-lg p-4">
+                  <h4 className="text-md font-medium text-gray-900 mb-3">Identification Marks</h4>
+                  <ul className="list-disc list-inside space-y-1">
+                    {currentApplication.identificationMarks
+                      .filter(mark => mark)
+                      .map((mark, index) => (
+                        <li key={index} className="text-sm text-gray-900">{mark}</li>
+                      ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Meeseva Details */}
+              {(currentApplication.meesevaDetails?.casteCertificate || currentApplication.meesevaDetails?.incomeCertificate) && (
+                <div className="bg-indigo-50 rounded-lg p-4">
+                  <h4 className="text-md font-medium text-indigo-900 mb-3">Meeseva Certificate Details</h4>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    {currentApplication.meesevaDetails?.casteCertificate && (
+                      <div>
+                        <dt className="text-sm font-medium text-gray-500">Caste Certificate</dt>
+                        <dd className="mt-1 text-sm text-gray-900">{currentApplication.meesevaDetails.casteCertificate}</dd>
+                      </div>
+                    )}
+                    
+                    {currentApplication.meesevaDetails?.incomeCertificate && (
+                      <div>
+                        <dt className="text-sm font-medium text-gray-500">Income Certificate</dt>
+                        <dd className="mt-1 text-sm text-gray-900">{currentApplication.meesevaDetails.incomeCertificate}</dd>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Documents Tab */}
           {activeTab === 'documents' && (
             <div className="space-y-6">
               <div className="flex justify-between items-center">
                 <h3 className="text-lg leading-6 font-medium text-gray-900">
-                  Program Required Documents
+                  Documents & Verification
                 </h3>
-                {user?.role === 'student' && (
-                  <Link
-                    to={`/applications/${id}/documents`}
-                    className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
-                  >
-                    <Upload className="h-4 w-4 mr-2" />
-                    Manage Documents
-                  </Link>
-                )}
+                <Link
+                  to={`/applications/${id}/documents`}
+                  className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
+                >
+                  <Upload className="h-4 w-4 mr-2" />
+                  Manage Documents
+                </Link>
               </div>
 
-              {/* Program Information */}
-              {currentApplication.programId && typeof currentApplication.programId === 'object' && (
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                  <h4 className="text-sm font-medium text-blue-800">
-                    Program: {currentApplication.programId.programName} ({currentApplication.programId.programCode})
-                  </h4>
-                  <p className="text-sm text-blue-700 mt-1">
-                    The documents below are specifically required for this program.
-                  </p>
-                </div>
-              )}
-
-              {/* Document Status Overview */}
+              {/* Document Progress Summary */}
               <div className="bg-gray-50 rounded-lg p-4">
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                   <div className="text-center">
                     <p className="text-2xl font-bold text-blue-600">{docStatus.required}</p>
-                    <p className="text-sm text-gray-500">Required for Program</p>
+                    <p className="text-sm text-gray-500">Required</p>
                   </div>
                   <div className="text-center">
                     <p className="text-2xl font-bold text-green-600">{docStatus.submitted}</p>
@@ -539,81 +804,35 @@ const ApplicationDetailsPage = () => {
                 </div>
               </div>
 
-              {/* Documents List - Program-Specific */}
-              <div className="space-y-4">
-                {getRequiredDocumentsForProgram().map((requirement) => {
+              {/* Quick Document List */}
+              <div className="space-y-3">
+                {programRequirements.filter(req => req.isRequired).map((requirement) => {
                   const document = documents.find(doc => doc.certificateTypeId._id === requirement.certificateTypeId._id);
                   
                   return (
-                    <div key={requirement._id} className="border border-gray-200 rounded-lg p-4">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center space-x-4">
-                          <div className={`w-4 h-4 rounded-full ${
-                            document ? (document.isVerified ? 'bg-green-500' : 'bg-yellow-500') : 'bg-red-500'
-                          }`}></div>
-                          <div>
-                            <h4 className="text-sm font-medium text-gray-900">{requirement.certificateTypeId.name}</h4>
-                            <p className="text-sm text-gray-500">{requirement.certificateTypeId.description}</p>
-                            {requirement.specialInstructions && (
-                              <p className="text-sm text-blue-600 mt-1">
-                                <strong>Special Instructions:</strong> {requirement.specialInstructions}
-                              </p>
-                            )}
-                            {document && (
-                              <p className="text-xs text-gray-400 mt-1">
-                                Uploaded: {new Date(document.dateCreated).toLocaleDateString()}
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                        
-                        <div className="flex items-center space-x-3">
-                          {document ? (
-                            <>
-                              <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                                document.isVerified 
-                                  ? 'bg-green-100 text-green-800' 
-                                  : 'bg-yellow-100 text-yellow-800'
-                              }`}>
-                                {document.isVerified ? 'Verified' : 'Pending Verification'}
-                              </span>
-                              {(user?.role === 'admin' || user?.role === 'program_admin') && (
-                                <Link
-                                  to={`/applications/${id}/documents/verify`}
-                                  className="text-blue-600 hover:text-blue-800 text-sm"
-                                >
-                                  <Eye className="h-4 w-4" />
-                                </Link>
-                              )}
-                            </>
-                          ) : (
-                            <span className="px-2 py-1 text-xs font-medium rounded-full bg-red-100 text-red-800">
-                              Not Uploaded
-                            </span>
+                    <div key={requirement._id} className="flex items-center justify-between p-3 border border-gray-200 rounded-lg">
+                      <div className="flex items-center space-x-3">
+                        <div className={`w-3 h-3 rounded-full ${
+                          document ? (document.isVerified ? 'bg-green-500' : 'bg-yellow-500') : 'bg-red-500'
+                        }`}></div>
+                        <div>
+                          <h4 className="text-sm font-medium text-gray-900">{requirement.certificateTypeId.name}</h4>
+                          {document && (
+                            <p className="text-xs text-gray-500">
+                              Uploaded: {new Date(document.dateCreated).toLocaleDateString()}
+                            </p>
                           )}
                         </div>
                       </div>
                       
-                      {document?.verificationRemarks && (
-                        <div className="mt-3 bg-blue-50 border border-blue-200 rounded p-3">
-                          <p className="text-xs text-blue-800">
-                            <strong>Admin Comment:</strong> {document.verificationRemarks}
-                          </p>
-                        </div>
-                      )}
+                      <span className={`px-2 py-1 text-xs font-medium rounded-full ${
+                        document ? (document.isVerified ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800') : 'bg-red-100 text-red-800'
+                      }`}>
+                        {document ? (document.isVerified ? 'Verified' : 'Pending') : 'Missing'}
+                      </span>
                     </div>
                   );
                 })}
-
-                {getRequiredDocumentsForProgram().length === 0 && (
-                  <div className="text-center py-8">
-                    <FileText className="mx-auto h-12 w-12 text-gray-400" />
-                    <h3 className="mt-2 text-sm font-medium text-gray-900">No certificate requirements configured</h3>
-                    <p className="mt-1 text-sm text-gray-500">
-                      This program does not have any specific document requirements configured yet.
-                    </p>
-                  </div>
-                )}
               </div>
             </div>
           )}
@@ -684,482 +903,39 @@ const ApplicationDetailsPage = () => {
         </div>
       </div>
 
-      {/* ENHANCED Admin Actions */}
+      {/* Admin Actions */}
       {(user?.role === 'admin' || user?.role === 'program_admin') && (
         <div className="bg-white shadow rounded-lg p-6">
           <h3 className="text-lg leading-6 font-medium text-gray-900 mb-6">
-            Admin Actions & Status Management
+            Admin Actions
           </h3>
           
-          {/* Current Status Display */}
-          <div className="mb-6 p-4 bg-gray-50 rounded-lg border">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center space-x-3">
-                <div className="flex-shrink-0">
-                  {getStatusIcon(currentApplication.status)}
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-gray-700">Current Status</p>
-                  <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium border ${getStatusColor(currentApplication.status)}`}>
-                    {currentApplication.status.replace('_', ' ').toUpperCase()}
-                  </span>
-                </div>
-              </div>
-              {currentApplication.reviewedBy && currentApplication.reviewedAt && (
-                <div className="text-right">
-                  <p className="text-xs text-gray-500">
-                    Last reviewed: {new Date(currentApplication.reviewedAt).toLocaleString()}
-                  </p>
-                  <p className="text-xs text-gray-400">
-                    By: {currentApplication.reviewedBy.email || 'System'}
-                  </p>
-                </div>
-              )}
-            </div>
-            
-            <div className="bg-blue-50 border-l-4 border-blue-400 p-3 rounded-r">
-              <p className="text-sm text-blue-800">
-                {getStatusDescription(currentApplication.status)}
-              </p>
-            </div>
-          </div>
-
-          {/* Document Status Quick View */}
-          <div className="mb-6 p-4 bg-gray-50 rounded-lg border">
-            <h4 className="text-sm font-medium text-gray-700 mb-3">Document Verification Status</h4>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div className="text-center">
-                <p className="text-lg font-bold text-blue-600">{docStatus.required}</p>
-                <p className="text-xs text-gray-500">Required</p>
-              </div>
-              <div className="text-center">
-                <p className="text-lg font-bold text-green-600">{docStatus.submitted}</p>
-                <p className="text-xs text-gray-500">Submitted</p>
-              </div>
-              <div className="text-center">
-                <p className="text-lg font-bold text-purple-600">{docStatus.verified}</p>
-                <p className="text-xs text-gray-500">Verified</p>
-              </div>
-              <div className="text-center">
-                <p className="text-lg font-bold text-red-600">{docStatus.required - docStatus.submitted}</p>
-                <p className="text-xs text-gray-500">Missing</p>
-              </div>
-            </div>
-            
-            <div className="mt-3 space-y-2">
-              <div>
-                <div className="flex justify-between text-xs">
-                  <span>Completion: {docStatus.completionPercentage}%</span>
-                </div>
-                <div className="bg-gray-200 rounded-full h-2">
-                  <div 
-                    className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                    style={{ width: `${docStatus.completionPercentage}%` }}
-                  ></div>
-                </div>
-              </div>
-              <div>
-                <div className="flex justify-between text-xs">
-                  <span>Verification: {docStatus.verificationPercentage}%</span>
-                </div>
-                <div className="bg-gray-200 rounded-full h-2">
-                  <div 
-                    className="bg-green-600 h-2 rounded-full transition-all duration-300"
-                    style={{ width: `${docStatus.verificationPercentage}%` }}
-                  ></div>
-                </div>
-              </div>
-            </div>
-          </div>
-          
-          {/* Status-specific Actions */}
-          {currentApplication.status === 'draft' && (
-            <div className="space-y-4">
-              <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
-                <div className="flex items-start">
-                  <FileText className="h-5 w-5 text-blue-400 mt-0.5" />
-                  <div className="ml-3">
-                    <h3 className="text-sm font-medium text-blue-800">Draft Application</h3>
-                    <p className="text-sm text-blue-700 mt-1">
-                      This application is still in draft mode. The student can continue editing, or you can help move it forward in the process.
-                    </p>
-                  </div>
-                </div>
-              </div>
-              
-              <div className="flex flex-wrap gap-3">
+          <div className="flex flex-wrap gap-3">
+            {currentApplication.status === 'submitted' && (
+              <>
                 <button
-                  onClick={() => handleStatusChange('submitted', 'Application submitted by admin on behalf of student')}
-                  className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                  onClick={() => openApprovalModal('approved')}
+                  className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
                 >
-                  <Send className="h-4 w-4 mr-2" />
-                  Mark as Submitted
+                  <CheckCircle className="h-4 w-4 mr-2" />
+                  Approve
                 </button>
                 <button
-                  onClick={() => openApprovalModal('under_review')}
-                  className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                  onClick={() => openApprovalModal('rejected')}
+                  className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+                >
+                  <XCircle className="h-4 w-4 mr-2" />
+                  Reject
+                </button>
+                <button
+                  onClick={() => handleStatusChange('under_review', 'Moved to detailed review')}
+                  className="inline-flex items-center px-4 py-2 border border-purple-300 rounded-md shadow-sm text-sm font-medium text-purple-700 bg-purple-50 hover:bg-purple-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
                 >
                   <Clock className="h-4 w-4 mr-2" />
                   Move to Review
                 </button>
-                <button
-                  onClick={() => openApprovalModal('rejected')}
-                  className="inline-flex items-center px-4 py-2 border border-red-300 rounded-md shadow-sm text-sm font-medium text-red-700 bg-red-50 hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
-                >
-                  <XCircle className="h-4 w-4 mr-2" />
-                  Reject (Incomplete)
-                </button>
-              </div>
-            </div>
-          )}
-          
-          {currentApplication.status === 'submitted' && (
-            <div className="space-y-4">
-              <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4">
-                <div className="flex items-start">
-                  <Send className="h-5 w-5 text-yellow-400 mt-0.5" />
-                  <div className="ml-3">
-                    <h3 className="text-sm font-medium text-yellow-800">Submitted Application</h3>
-                    <p className="text-sm text-yellow-700 mt-1">
-                      Application is ready for review. Verify all documents and information before making a decision.
-                    </p>
-                  </div>
-                </div>
-              </div>
-              
-              {canApprove() ? (
-                <div className="space-y-3">
-                  <div className="bg-green-50 border border-green-200 rounded-md p-3">
-                    <p className="text-sm text-green-800">
-                      ✅ All requirements met. Application ready for approval.
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap gap-3">
-                    <button
-                      onClick={() => openApprovalModal('approved')}
-                      className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
-                    >
-                      <CheckCircle className="h-4 w-4 mr-2" />
-                      Approve Application
-                    </button>
-                    <button
-                      onClick={() => openApprovalModal('rejected')}
-                      className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
-                    >
-                      <XCircle className="h-4 w-4 mr-2" />
-                      Reject Application
-                    </button>
-                    <button
-                      onClick={() => handleStatusChange('under_review', 'Moved to detailed review for comprehensive evaluation')}
-                      className="inline-flex items-center px-4 py-2 border border-purple-300 rounded-md shadow-sm text-sm font-medium text-purple-700 bg-purple-50 hover:bg-purple-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
-                    >
-                      <Clock className="h-4 w-4 mr-2" />
-                      Move to Detailed Review
-                    </button>
-                    <button
-                      onClick={() => openApprovalModal('draft')}
-                      className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                    >
-                      <Edit2 className="h-4 w-4 mr-2" />
-                      Send to Draft
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div className="bg-red-50 border border-red-200 rounded-md p-4">
-                  <div className="flex">
-                    <AlertTriangle className="h-5 w-5 text-red-400" />
-                    <div className="ml-3">
-                      <h3 className="text-sm font-medium text-red-800">
-                        Cannot Approve - Missing Requirements
-                      </h3>
-                      <p className="text-sm text-red-700 mt-1">
-                        Complete document verification before approval is possible:
-                      </p>
-                      <ul className="text-sm text-red-700 mt-2 list-disc list-inside space-y-1">
-                        <li>Missing Documents: {docStatus.required - docStatus.submitted}</li>
-                        <li>Unverified Documents: {docStatus.submitted - docStatus.verified}</li>
-                        <li>Completion Rate: {docStatus.completionPercentage}%</li>
-                      </ul>
-                      <div className="mt-4 flex flex-wrap gap-3">
-                        <Link
-                          to={`/applications/${id}/documents/verify`}
-                          className="inline-flex items-center text-sm bg-red-100 text-red-800 px-3 py-2 rounded-md hover:bg-red-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
-                        >
-                          <Eye className="h-4 w-4 mr-2" />
-                          Verify Documents →
-                        </Link>
-                        <button
-                          onClick={() => openApprovalModal('rejected')}
-                          className="inline-flex items-center text-sm bg-red-600 text-white px-3 py-2 rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
-                        >
-                          <XCircle className="h-4 w-4 mr-2" />
-                          Reject for Incomplete Docs
-                        </button>
-                        <button
-                          onClick={() => handleStatusChange('under_review', 'Moved to review despite incomplete documentation for special consideration')}
-                          className="inline-flex items-center text-sm bg-purple-600 text-white px-3 py-2 rounded-md hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
-                        >
-                          <Clock className="h-4 w-4 mr-2" />
-                          Force Review
-                        </button>
-                        <button
-                          onClick={() => openApprovalModal('draft')}
-                          className="inline-flex items-center text-sm bg-gray-600 text-white px-3 py-2 rounded-md hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
-                        >
-                          <Edit2 className="h-4 w-4 mr-2" />
-                          Send to Draft
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-          
-          {currentApplication.status === 'under_review' && (
-            <div className="space-y-4">
-              <div className="bg-purple-50 border border-purple-200 rounded-md p-4">
-                <div className="flex items-start">
-                  <Clock className="h-5 w-5 text-purple-400 mt-0.5" />
-                  <div className="ml-3">
-                    <h3 className="text-sm font-medium text-purple-800">Under Detailed Review</h3>
-                    <p className="text-sm text-purple-700 mt-1">
-                      Application is being carefully examined by the review committee. All aspects are being evaluated.
-                    </p>
-                  </div>
-                </div>
-              </div>
-              
-              {canApprove() ? (
-                <div className="space-y-3">
-                  <div className="bg-green-50 border border-green-200 rounded-md p-3">
-                    <p className="text-sm text-green-800">
-                      ✅ Review complete. All requirements satisfied for final decision.
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap gap-3">
-                    <button
-                      onClick={() => openApprovalModal('approved')}
-                      className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
-                    >
-                      <CheckCircle className="h-4 w-4 mr-2" />
-                      Approve After Review
-                    </button>
-                    <button
-                      onClick={() => openApprovalModal('rejected')}
-                      className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
-                    >
-                      <XCircle className="h-4 w-4 mr-2" />
-                      Reject After Review
-                    </button>
-                    <button
-                      onClick={() => handleStatusChange('submitted', 'Moved back to submitted status for additional documentation or clarification')}
-                      className="inline-flex items-center px-4 py-2 border border-blue-300 rounded-md shadow-sm text-sm font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                    >
-                      <ArrowLeft className="h-4 w-4 mr-2" />
-                      Back to Submitted
-                    </button>
-                    <button
-                      onClick={() => openApprovalModal('draft')}
-                      className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                    >
-                      <Edit2 className="h-4 w-4 mr-2" />
-                      Send to Draft
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4">
-                  <div className="flex">
-                    <AlertTriangle className="h-5 w-5 text-yellow-400" />
-                    <div className="ml-3">
-                      <h3 className="text-sm font-medium text-yellow-800">Review Prerequisites Not Met</h3>
-                      <p className="text-sm text-yellow-700 mt-1">
-                        Complete document verification before making final decision.
-                      </p>
-                      <div className="mt-3 flex flex-wrap gap-3">
-                        <Link
-                          to={`/applications/${id}/documents/verify`}
-                          className="inline-flex items-center text-sm text-yellow-800 bg-yellow-100 px-3 py-2 rounded-md hover:bg-yellow-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500"
-                        >
-                          <Eye className="h-4 w-4 mr-2" />
-                          Complete Verification →
-                        </Link>
-                        <button
-                          onClick={() => handleStatusChange('submitted', 'Returned to submitted for additional documentation')}
-                          className="inline-flex items-center text-sm text-blue-700 bg-blue-100 px-3 py-2 rounded-md hover:bg-blue-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                        >
-                          <ArrowLeft className="h-4 w-4 mr-2" />
-                          Return to Submitted
-                        </button>
-                        <button
-                          onClick={() => openApprovalModal('draft')}
-                          className="inline-flex items-center text-sm text-gray-700 bg-gray-100 px-3 py-2 rounded-md hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
-                        >
-                          <Edit2 className="h-4 w-4 mr-2" />
-                          Send to Draft
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-          
-          {currentApplication.status === 'approved' && (
-            <div className="space-y-4">
-              <div className="bg-green-50 border border-green-200 rounded-md p-4">
-                <div className="flex items-start">
-                  <CheckCircle className="h-5 w-5 text-green-400 mt-0.5" />
-                  <div className="ml-3">
-                    <h3 className="text-sm font-medium text-green-800">Application Approved</h3>
-                    <p className="text-sm text-green-700 mt-1">
-                      Student has been accepted and notified. 
-                      {currentApplication.approvalComments && (
-                        <span className="block mt-2 font-medium">
-                          Approval Comments: "{currentApplication.approvalComments}"
-                        </span>
-                      )}
-                    </p>
-                  </div>
-                </div>
-              </div>
-              
-              <div className="bg-yellow-50 border border-yellow-200 rounded-md p-3">
-                <p className="text-sm text-yellow-800">
-                  ⚠️ Use caution when changing status of approved applications. Student has been notified of acceptance.
-                </p>
-              </div>
-              
-              <div className="flex flex-wrap gap-3">
-                <button
-                  onClick={() => openApprovalModal('rejected')}
-                  className="inline-flex items-center px-3 py-2 border border-red-300 rounded-md shadow-sm text-sm font-medium text-red-700 bg-red-50 hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
-                >
-                  <XCircle className="h-4 w-4 mr-2" />
-                  Revoke Approval
-                </button>
-                <button
-                  onClick={() => handleStatusChange('under_review', 'Moved back to review for reconsideration due to new information')}
-                  className="inline-flex items-center px-3 py-2 border border-purple-300 rounded-md shadow-sm text-sm font-medium text-purple-700 bg-purple-50 hover:bg-purple-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
-                >
-                  <Clock className="h-4 w-4 mr-2" />
-                  Reopen for Review
-                </button>
-              </div>
-            </div>
-          )}
-          
-          {currentApplication.status === 'rejected' && (
-            <div className="space-y-4">
-              <div className="bg-red-50 border border-red-200 rounded-md p-4">
-                <div className="flex items-start">
-                  <XCircle className="h-5 w-5 text-red-400 mt-0.5" />
-                  <div className="ml-3">
-                    <h3 className="text-sm font-medium text-red-800">Application Rejected</h3>
-                    <p className="text-sm text-red-700 mt-1">
-                      Student has been notified of rejection. 
-                      {currentApplication.approvalComments && (
-                        <span className="block mt-2 font-medium">
-                          Rejection Reason: "{currentApplication.approvalComments}"
-                        </span>
-                      )}
-                    </p>
-                  </div>
-                </div>
-              </div>
-              
-              <div className="bg-blue-50 border border-blue-200 rounded-md p-3">
-                <p className="text-sm text-blue-800">
-                  💡 Rejected applications can be reconsidered if new information becomes available or errors are discovered.
-                </p>
-              </div>
-              
-              <div className="flex flex-wrap gap-3">
-                <button
-                  onClick={() => openApprovalModal('approved')}
-                  className="inline-flex items-center px-3 py-2 border border-green-300 rounded-md shadow-sm text-sm font-medium text-green-700 bg-green-50 hover:bg-green-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
-                >
-                  <CheckCircle className="h-4 w-4 mr-2" />
-                  Reverse to Approved
-                </button>
-                <button
-                  onClick={() => handleStatusChange('under_review', 'Reopened for reconsideration based on appeal or new information')}
-                  className="inline-flex items-center px-3 py-2 border border-purple-300 rounded-md shadow-sm text-sm font-medium text-purple-700 bg-purple-50 hover:bg-purple-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
-                >
-                  <Clock className="h-4 w-4 mr-2" />
-                  Reopen for Review
-                </button>
-                <button
-                  onClick={() => handleStatusChange('submitted', 'Moved back to submitted for re-evaluation with corrected information')}
-                  className="inline-flex items-center px-3 py-2 border border-blue-300 rounded-md shadow-sm text-sm font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                >
-                  <ArrowLeft className="h-4 w-4 mr-2" />
-                  Back to Submitted
-                </button>
-              </div>
-            </div>
-          )}
-          
-          {/* Additional Admin Tools */}
-          <div className="mt-6 pt-6 border-t border-gray-200">
-            <h4 className="text-sm font-medium text-gray-700 mb-4">Additional Admin Tools</h4>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-3">
-                <h5 className="text-xs font-medium text-gray-500 uppercase tracking-wide">Document Management</h5>
-                <div className="flex flex-wrap gap-2">
-                  <Link
-                    to={`/applications/${id}/documents`}
-                    className="inline-flex items-center px-3 py-2 border border-blue-300 rounded-md shadow-sm text-xs font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                  >
-                    <Upload className="h-3 w-3 mr-1" />
-                    Manage Documents
-                  </Link>
-                  <Link
-                    to={`/applications/${id}/documents/verify`}
-                    className="inline-flex items-center px-3 py-2 border border-purple-300 rounded-md shadow-sm text-xs font-medium text-purple-700 bg-purple-50 hover:bg-purple-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
-                  >
-                    <Eye className="h-3 w-3 mr-1" />
-                    Verify Documents
-                  </Link>
-                </div>
-              </div>
-              
-              <div className="space-y-3">
-                <h5 className="text-xs font-medium text-gray-500 uppercase tracking-wide">Application History</h5>
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    onClick={() => setShowHistory(!showHistory)}
-                    className="inline-flex items-center px-3 py-2 border border-gray-300 rounded-md shadow-sm text-xs font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                  >
-                    <History className="h-3 w-3 mr-1" />
-                    {showHistory ? 'Hide History' : 'View History'}
-                  </button>
-                  <button
-                    onClick={() => {/* Add audit log functionality */}}
-                    className="inline-flex items-center px-3 py-2 border border-gray-300 rounded-md shadow-sm text-xs font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                  >
-                    <MessageSquare className="h-3 w-3 mr-1" />
-                    Audit Trail
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-          
-          {/* Quick Stats Footer */}
-          <div className="mt-6 pt-4 border-t border-gray-100 bg-gray-50 -mx-6 -mb-6 px-6 py-4 rounded-b-lg">
-            <div className="flex items-center justify-between text-xs text-gray-500">
-              <span>
-                Last Updated: {new Date(currentApplication.dateUpdated).toLocaleString()}
-              </span>
-              <span>
-                Application #{currentApplication.applicationNumber}
-              </span>
-            </div>
+              </>
+            )}
           </div>
         </div>
       )}
@@ -1176,33 +952,21 @@ const ApplicationDetailsPage = () => {
               <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
                 <div className="sm:flex sm:items-start">
                   <div className={`mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full sm:mx-0 sm:h-10 sm:w-10 ${
-                    approvalForm.status === 'approved' ? 'bg-green-100' : 
-                    approvalForm.status === 'rejected' ? 'bg-red-100' :
-                    approvalForm.status === 'draft' ? 'bg-blue-100' : 'bg-gray-100'
+                    approvalForm.status === 'approved' ? 'bg-green-100' : 'bg-red-100'
                   }`}>
                     {approvalForm.status === 'approved' ? (
                       <CheckCircle className="h-6 w-6 text-green-600" />
-                    ) : approvalForm.status === 'rejected' ? (
-                      <XCircle className="h-6 w-6 text-red-600" />
-                    ) : approvalForm.status === 'draft' ? (
-                      <Edit2 className="h-6 w-6 text-blue-600" />
                     ) : (
-                      <FileText className="h-6 w-6 text-gray-600" />
+                      <XCircle className="h-6 w-6 text-red-600" />
                     )}
                   </div>
                   <div className="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left w-full">
                     <h3 className="text-lg leading-6 font-medium text-gray-900">
-                      {approvalForm.status === 'approved' ? 'Approve' : 
-                       approvalForm.status === 'rejected' ? 'Reject' : 
-                       approvalForm.status === 'draft' ? 'Send to Draft' : 'Update'} Application
+                      {approvalForm.status === 'approved' ? 'Approve' : 'Reject'} Application
                     </h3>
                     <div className="mt-2">
                       <p className="text-sm text-gray-500">
-                        {approvalForm.status === 'draft' ? (
-                          'Are you sure you want to send this application back to draft? The student will be able to edit and resubmit.'
-                        ) : (
-                          `Are you sure you want to ${approvalForm.status} this application? This action will notify the student and cannot be easily undone.`
-                        )}
+                        Are you sure you want to {approvalForm.status} this application? This action will notify the student.
                       </p>
                     </div>
                     <div className="mt-4">
@@ -1215,7 +979,7 @@ const ApplicationDetailsPage = () => {
                         rows={3}
                         required
                         className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-                        placeholder={`Please provide reason for ${approvalForm.status === 'draft' ? 'sending to draft' : approvalForm.status}...`}
+                        placeholder={`Please provide reason for ${approvalForm.status}...`}
                       />
                     </div>
                   </div>

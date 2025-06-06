@@ -1,5 +1,4 @@
-// File: src/pages/ApplicationsPage.tsx
-// Purpose: Enhanced applications management with filtering, editing, and role-based features
+// src/pages/ApplicationsPage.tsx - Enhanced with full field support and improved UI
 
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -23,7 +22,13 @@ import {
   Upload,
   ArrowUpDown,
   Settings,
-  RefreshCw
+  RefreshCw,
+  GraduationCap,
+  Award,
+  Phone,
+  Mail,
+  MapPin,
+  Star
 } from 'lucide-react';
 import useApplicationStore from '../stores/applicationStore';
 import useAuthStore from '../stores/authStore';
@@ -57,6 +62,7 @@ const ApplicationsPage = () => {
   const [showFilters, setShowFilters] = useState(false);
   const [selectedApplications, setSelectedApplications] = useState<string[]>([]);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [expandedCard, setExpandedCard] = useState<string | null>(null);
 
   useEffect(() => {
     fetchApplications(filters);
@@ -167,6 +173,27 @@ const ApplicationsPage = () => {
     return stats;
   };
 
+  const formatPhoneNumber = (phone: string) => {
+    if (!phone) return '';
+    if (phone.length === 10) {
+      return `${phone.slice(0, 3)}-${phone.slice(3, 6)}-${phone.slice(6)}`;
+    }
+    return phone;
+  };
+
+  const getAddressString = (address: any) => {
+    if (!address) return '';
+    const parts = [
+      address.doorNo,
+      address.street,
+      address.village,
+      address.mandal,
+      address.district,
+      address.pincode
+    ].filter(part => part);
+    return parts.join(', ');
+  };
+
   const stats = getQuickStats();
 
   return (
@@ -183,6 +210,13 @@ const ApplicationsPage = () => {
           </p>
         </div>
         <div className="flex flex-wrap gap-3">
+          <button
+            onClick={() => setViewMode(viewMode === 'list' ? 'grid' : 'list')}
+            className="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+          >
+            <Settings className="h-4 w-4 mr-2" />
+            {viewMode === 'list' ? 'Grid View' : 'List View'}
+          </button>
           <button
             onClick={() => fetchApplications(filters)}
             className="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
@@ -211,101 +245,30 @@ const ApplicationsPage = () => {
 
       {/* Quick Stats */}
       <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
-        <div className="bg-white overflow-hidden shadow rounded-lg">
-          <div className="p-5">
-            <div className="flex items-center">
-              <div className="flex-shrink-0 bg-gray-500 rounded-md p-3">
-                <FileText className="h-6 w-6 text-white" />
-              </div>
-              <div className="ml-5 w-0 flex-1">
-                <dl>
-                  <dt className="text-sm font-medium text-gray-500 truncate">Total</dt>
-                  <dd className="text-lg font-medium text-gray-900">{pagination.total || stats.total}</dd>
-                </dl>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white overflow-hidden shadow rounded-lg">
-          <div className="p-5">
-            <div className="flex items-center">
-              <div className="flex-shrink-0 bg-gray-400 rounded-md p-3">
-                <FileText className="h-6 w-6 text-white" />
-              </div>
-              <div className="ml-5 w-0 flex-1">
-                <dl>
-                  <dt className="text-sm font-medium text-gray-500 truncate">Draft</dt>
-                  <dd className="text-lg font-medium text-gray-900">{stats.draft}</dd>
-                </dl>
+        {[
+          { label: 'Total', count: pagination.total || stats.total, color: 'bg-gray-500', icon: FileText },
+          { label: 'Draft', count: stats.draft, color: 'bg-gray-400', icon: FileText },
+          { label: 'Submitted', count: stats.submitted, color: 'bg-blue-500', icon: Send },
+          { label: 'Review', count: stats.underReview, color: 'bg-purple-500', icon: Clock },
+          { label: 'Approved', count: stats.approved, color: 'bg-green-500', icon: CheckCircle },
+          { label: 'Rejected', count: stats.rejected, color: 'bg-red-500', icon: XCircle }
+        ].map((stat) => (
+          <div key={stat.label} className="bg-white overflow-hidden shadow rounded-lg">
+            <div className="p-5">
+              <div className="flex items-center">
+                <div className={`flex-shrink-0 ${stat.color} rounded-md p-3`}>
+                  <stat.icon className="h-6 w-6 text-white" />
+                </div>
+                <div className="ml-5 w-0 flex-1">
+                  <dl>
+                    <dt className="text-sm font-medium text-gray-500 truncate">{stat.label}</dt>
+                    <dd className="text-lg font-medium text-gray-900">{stat.count}</dd>
+                  </dl>
+                </div>
               </div>
             </div>
           </div>
-        </div>
-
-        <div className="bg-white overflow-hidden shadow rounded-lg">
-          <div className="p-5">
-            <div className="flex items-center">
-              <div className="flex-shrink-0 bg-blue-500 rounded-md p-3">
-                <Send className="h-6 w-6 text-white" />
-              </div>
-              <div className="ml-5 w-0 flex-1">
-                <dl>
-                  <dt className="text-sm font-medium text-gray-500 truncate">Submitted</dt>
-                  <dd className="text-lg font-medium text-gray-900">{stats.submitted}</dd>
-                </dl>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white overflow-hidden shadow rounded-lg">
-          <div className="p-5">
-            <div className="flex items-center">
-              <div className="flex-shrink-0 bg-purple-500 rounded-md p-3">
-                <Clock className="h-6 w-6 text-white" />
-              </div>
-              <div className="ml-5 w-0 flex-1">
-                <dl>
-                  <dt className="text-sm font-medium text-gray-500 truncate">Review</dt>
-                  <dd className="text-lg font-medium text-gray-900">{stats.underReview}</dd>
-                </dl>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white overflow-hidden shadow rounded-lg">
-          <div className="p-5">
-            <div className="flex items-center">
-              <div className="flex-shrink-0 bg-green-500 rounded-md p-3">
-                <CheckCircle className="h-6 w-6 text-white" />
-              </div>
-              <div className="ml-5 w-0 flex-1">
-                <dl>
-                  <dt className="text-sm font-medium text-gray-500 truncate">Approved</dt>
-                  <dd className="text-lg font-medium text-gray-900">{stats.approved}</dd>
-                </dl>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white overflow-hidden shadow rounded-lg">
-          <div className="p-5">
-            <div className="flex items-center">
-              <div className="flex-shrink-0 bg-red-500 rounded-md p-3">
-                <XCircle className="h-6 w-6 text-white" />
-              </div>
-              <div className="ml-5 w-0 flex-1">
-                <dl>
-                  <dt className="text-sm font-medium text-gray-500 truncate">Rejected</dt>
-                  <dd className="text-lg font-medium text-gray-900">{stats.rejected}</dd>
-                </dl>
-              </div>
-            </div>
-          </div>
-        </div>
+        ))}
       </div>
 
       {/* Filters */}
@@ -384,42 +347,26 @@ const ApplicationsPage = () => {
           <div className="mt-4 flex items-center justify-between">
             <div className="flex items-center space-x-4">
               <span className="text-sm text-gray-500">Sort by:</span>
-              <button
-                onClick={() => handleSort('dateCreated')}
-                className={`text-sm px-3 py-1 rounded-md border ${
-                  filters.sortField === 'dateCreated' 
-                    ? 'bg-blue-100 text-blue-800 border-blue-200' 
-                    : 'bg-white text-gray-700 border-gray-300'
-                }`}
-              >
-                Date Created {filters.sortField === 'dateCreated' && (
-                  <ArrowUpDown className="inline h-3 w-3 ml-1" />
-                )}
-              </button>
-              <button
-                onClick={() => handleSort('status')}
-                className={`text-sm px-3 py-1 rounded-md border ${
-                  filters.sortField === 'status' 
-                    ? 'bg-blue-100 text-blue-800 border-blue-200' 
-                    : 'bg-white text-gray-700 border-gray-300'
-                }`}
-              >
-                Status {filters.sortField === 'status' && (
-                  <ArrowUpDown className="inline h-3 w-3 ml-1" />
-                )}
-              </button>
-              <button
-                onClick={() => handleSort('studentName')}
-                className={`text-sm px-3 py-1 rounded-md border ${
-                  filters.sortField === 'studentName' 
-                    ? 'bg-blue-100 text-blue-800 border-blue-200' 
-                    : 'bg-white text-gray-700 border-gray-300'
-                }`}
-              >
-                Student Name {filters.sortField === 'studentName' && (
-                  <ArrowUpDown className="inline h-3 w-3 ml-1" />
-                )}
-              </button>
+              {[
+                { field: 'dateCreated', label: 'Date Created' },
+                { field: 'status', label: 'Status' },
+                { field: 'studentName', label: 'Student Name' },
+                { field: 'submittedAt', label: 'Submitted Date' }
+              ].map((sort) => (
+                <button
+                  key={sort.field}
+                  onClick={() => handleSort(sort.field)}
+                  className={`text-sm px-3 py-1 rounded-md border ${
+                    filters.sortField === sort.field 
+                      ? 'bg-blue-100 text-blue-800 border-blue-200' 
+                      : 'bg-white text-gray-700 border-gray-300'
+                  }`}
+                >
+                  {sort.label} {filters.sortField === sort.field && (
+                    <ArrowUpDown className="inline h-3 w-3 ml-1" />
+                  )}
+                </button>
+              ))}
             </div>
 
             <div className="flex items-center space-x-3">
@@ -441,27 +388,7 @@ const ApplicationsPage = () => {
         </div>
       )}
 
-      {/* Bulk Actions */}
-      {selectedApplications.length > 0 && (user?.role === 'admin' || user?.role === 'program_admin') && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-blue-800">
-              {selectedApplications.length} application(s) selected
-            </span>
-            <div className="space-x-2">
-              <button
-                onClick={() => setSelectedApplications([])}
-                className="text-sm text-blue-600 hover:text-blue-800"
-              >
-                Clear selection
-              </button>
-              {/* Add bulk actions here for admin/program_admin */}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Applications List */}
+      {/* Applications Display */}
       {loading ? (
         <div className="flex justify-center py-12">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-700"></div>
@@ -512,87 +439,255 @@ const ApplicationsPage = () => {
             </div>
           )}
         </div>
-      ) : (
-        <div className="bg-white shadow overflow-hidden sm:rounded-md">
-          {/* Table Header with Selection */}
-          {(user?.role === 'admin' || user?.role === 'program_admin') && (
-            <div className="bg-gray-50 px-4 py-3 border-b border-gray-200">
-              <div className="flex items-center">
-                <input
-                  type="checkbox"
-                  checked={selectedApplications.length === applications.length && applications.length > 0}
-                  onChange={handleSelectAll}
-                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                />
-                <span className="ml-3 text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Application ({applications.length})
-                </span>
+      ) : viewMode === 'grid' ? (
+        // Grid View
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {applications.map((application) => (
+            <div key={application._id} className="bg-white shadow rounded-lg overflow-hidden">
+              <div className="p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center space-x-2">
+                    {getStatusIcon(application.status)}
+                    <span className={`px-2 py-1 text-xs font-medium rounded-full border ${getStatusColor(application.status)}`}>
+                      {application.status.replace('_', ' ').toUpperCase()}
+                    </span>
+                  </div>
+                  <div className="flex space-x-1">
+                    <Link
+                      to={`/applications/${application._id}`}
+                      className="text-blue-600 hover:text-blue-800"
+                    >
+                      <Eye className="h-4 w-4" />
+                    </Link>
+                    {canEdit(application) && (
+                      <Link
+                        to={`/applications/${application._id}/edit`}
+                        className="text-green-600 hover:text-green-800"
+                      >
+                        <Edit2 className="h-4 w-4" />
+                      </Link>
+                    )}
+                  </div>
+                </div>
+                
+                <div className="space-y-3">
+                  <div>
+                    <h3 className="text-lg font-medium text-gray-900">{application.studentName}</h3>
+                    <p className="text-sm text-gray-500">#{application.applicationNumber}</p>
+                  </div>
+                  
+                  <div className="space-y-2 text-sm text-gray-600">
+                    <div className="flex items-center">
+                      <BookOpen className="h-4 w-4 mr-2 text-gray-400" />
+                      <span className="truncate">
+                        {typeof application.programId === 'object' 
+                          ? application.programId?.programName 
+                          : application.programId}
+                      </span>
+                    </div>
+                    
+                    <div className="flex items-center">
+                      <Mail className="h-4 w-4 mr-2 text-gray-400" />
+                      <span className="truncate">{application.email}</span>
+                    </div>
+                    
+                    <div className="flex items-center">
+                      <Phone className="h-4 w-4 mr-2 text-gray-400" />
+                      <span>{formatPhoneNumber(application.mobileNumber)}</span>
+                    </div>
+                    
+                    <div className="flex items-center">
+                      <Calendar className="h-4 w-4 mr-2 text-gray-400" />
+                      <span>
+                        {application.submittedAt 
+                          ? `Submitted: ${new Date(application.submittedAt).toLocaleDateString()}`
+                          : `Created: ${new Date(application.dateCreated).toLocaleDateString()}`}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="mt-6 flex space-x-2">
+                  <Link
+                    to={`/applications/${application._id}`}
+                    className="flex-1 text-center px-3 py-2 border border-gray-300 rounded-md text-sm text-gray-700 hover:bg-gray-50"
+                  >
+                    View Details
+                  </Link>
+                  {canSubmit(application) && (
+                    <button
+                      onClick={() => handleSubmitApplication(application._id)}
+                      disabled={actionLoading === application._id}
+                      className="flex-1 text-center px-3 py-2 bg-blue-600 text-white rounded-md text-sm hover:bg-blue-700 disabled:opacity-50"
+                    >
+                      {actionLoading === application._id ? 'Submitting...' : 'Submit'}
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
-          )}
-
-          {/* Applications List */}
+          ))}
+        </div>
+      ) : (
+        // List View (Enhanced)
+        <div className="bg-white shadow overflow-hidden sm:rounded-md">
           <ul className="divide-y divide-gray-200">
             {applications.map((application) => (
               <li key={application._id}>
-                <div className="px-4 py-4 sm:px-6">
+                <div className="px-4 py-6 sm:px-6">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-4 flex-1">
-                      {/* Selection checkbox for admin/program_admin */}
-                      {(user?.role === 'admin' || user?.role === 'program_admin') && (
-                        <input
-                          type="checkbox"
-                          checked={selectedApplications.includes(application._id)}
-                          onChange={() => handleSelectApplication(application._id)}
-                          className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                        />
-                      )}
-                      
-                      {/* Status Icon */}
                       <div className="flex-shrink-0">
                         {getStatusIcon(application.status)}
                       </div>
                       
-                      {/* Application Info */}
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between">
                           <div>
                             <Link
                               to={`/applications/${application._id}`}
-                              className="text-sm font-medium text-blue-600 hover:text-blue-800"
+                              className="text-lg font-medium text-blue-600 hover:text-blue-800 truncate"
                             >
-                              {application.applicationNumber}
-                            </Link>
-                            <p className="text-sm text-gray-900 font-medium">
                               {application.studentName}
-                            </p>
+                            </Link>
+                            <p className="text-sm text-gray-500">#{application.applicationNumber}</p>
                           </div>
                           <div className="flex items-center space-x-2">
-                            <span className={`px-2 py-1 text-xs font-medium rounded-full border ${getStatusColor(application.status)}`}>
+                            <span className={`px-3 py-1 text-xs font-medium rounded-full border ${getStatusColor(application.status)}`}>
                               {application.status.replace('_', ' ').toUpperCase()}
                             </span>
                           </div>
                         </div>
                         
-                        <div className="mt-2 sm:flex sm:justify-between">
-                          <div className="sm:flex sm:space-x-6">
-                            <div className="flex items-center text-sm text-gray-500">
-                              <BookOpen className="flex-shrink-0 mr-1.5 h-4 w-4 text-gray-400" />
-                              Program: {typeof application.programId === 'object' 
-                                ? application.programId?.programName 
-                                : application.programId || 'N/A'}
+                        {/* Enhanced Information Display */}
+                        <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                          <div className="flex items-center text-sm text-gray-600">
+                            <BookOpen className="flex-shrink-0 mr-2 h-4 w-4 text-gray-400" />
+                            <span className="truncate">
+                              {typeof application.programId === 'object' 
+                                ? `${application.programId?.programName} (${application.programId?.programCode})`
+                                : application.programId}
+                            </span>
+                          </div>
+                          
+                          <div className="flex items-center text-sm text-gray-600">
+                            <Mail className="flex-shrink-0 mr-2 h-4 w-4 text-gray-400" />
+                            <span className="truncate">{application.email}</span>
+                          </div>
+                          
+                          <div className="flex items-center text-sm text-gray-600">
+                            <Phone className="flex-shrink-0 mr-2 h-4 w-4 text-gray-400" />
+                            <span>{formatPhoneNumber(application.mobileNumber)}</span>
+                          </div>
+                          
+                          <div className="flex items-center text-sm text-gray-600">
+                            <Calendar className="flex-shrink-0 mr-2 h-4 w-4 text-gray-400" />
+                            <span>
+                              Academic Year: {application.academicYear}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Additional Details (Expandable) */}
+                        {expandedCard === application._id && (
+                          <div className="mt-4 p-4 bg-gray-50 rounded-lg">
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                              {/* Personal Details */}
+                              <div>
+                                <h4 className="text-sm font-medium text-gray-700 mb-2">Personal Details</h4>
+                                <div className="space-y-1 text-sm text-gray-600">
+                                  <div className="flex items-center">
+                                    <Users className="h-3 w-3 mr-2 text-gray-400" />
+                                    <span>Father: {application.fatherName}</span>
+                                  </div>
+                                  <div className="flex items-center">
+                                    <Users className="h-3 w-3 mr-2 text-gray-400" />
+                                    <span>Mother: {application.motherName}</span>
+                                  </div>
+                                  <div className="flex items-center">
+                                    <Calendar className="h-3 w-3 mr-2 text-gray-400" />
+                                    <span>DOB: {new Date(application.dateOfBirth).toLocaleDateString()}</span>
+                                  </div>
+                                  <div className="flex items-center">
+                                    <User className="h-3 w-3 mr-2 text-gray-400" />
+                                    <span>Gender: {application.gender}</span>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Contact Details */}
+                              <div>
+                                <h4 className="text-sm font-medium text-gray-700 mb-2">Contact Details</h4>
+                                <div className="space-y-1 text-sm text-gray-600">
+                                  {application.parentMobile && (
+                                    <div className="flex items-center">
+                                      <Phone className="h-3 w-3 mr-2 text-gray-400" />
+                                      <span>Parent: {formatPhoneNumber(application.parentMobile)}</span>
+                                    </div>
+                                  )}
+                                  {application.guardianMobile && (
+                                    <div className="flex items-center">
+                                      <Phone className="h-3 w-3 mr-2 text-gray-400" />
+                                      <span>Guardian: {formatPhoneNumber(application.guardianMobile)}</span>
+                                    </div>
+                                  )}
+                                  {application.presentAddress && (
+                                    <div className="flex items-start">
+                                      <MapPin className="h-3 w-3 mr-2 mt-0.5 text-gray-400" />
+                                      <span className="line-clamp-2">{getAddressString(application.presentAddress)}</span>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Education & Reservation */}
+                              <div>
+                                <h4 className="text-sm font-medium text-gray-700 mb-2">Education & Category</h4>
+                                <div className="space-y-1 text-sm text-gray-600">
+                                  <div className="flex items-center">
+                                    <Award className="h-3 w-3 mr-2 text-gray-400" />
+                                    <span>Category: {application.reservationCategory}</span>
+                                  </div>
+                                  {application.interBoard && (
+                                    <div className="flex items-center">
+                                      <GraduationCap className="h-3 w-3 mr-2 text-gray-400" />
+                                      <span>Board: {application.interBoard}</span>
+                                    </div>
+                                  )}
+                                  {application.interPassYear && (
+                                    <div className="flex items-center">
+                                      <Calendar className="h-3 w-3 mr-2 text-gray-400" />
+                                      <span>Pass Year: {application.interPassYear}</span>
+                                    </div>
+                                  )}
+                                  {application.specialReservation && (
+                                    <div className="flex items-center">
+                                      <Star className="h-3 w-3 mr-2 text-yellow-400" />
+                                      <span>Special: {application.specialReservation}</span>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
                             </div>
-                            <div className="mt-2 flex items-center text-sm text-gray-500 sm:mt-0">
-                              <Calendar className="flex-shrink-0 mr-1.5 h-4 w-4 text-gray-400" />
+                          </div>
+                        )}
+                        
+                        <div className="mt-4 flex items-center justify-between">
+                          <div className="flex items-center text-sm text-gray-500">
+                            <span>
                               {application.submittedAt 
                                 ? `Submitted: ${new Date(application.submittedAt).toLocaleDateString()}`
-                                : `Created: ${new Date(application.dateCreated).toLocaleDateString()}`
-                              }
-                            </div>
-                            <div className="mt-2 flex items-center text-sm text-gray-500 sm:mt-0">
-                              <User className="flex-shrink-0 mr-1.5 h-4 w-4 text-gray-400" />
-                              Academic Year: {application.academicYear}
-                            </div>
+                                : `Created: ${new Date(application.dateCreated).toLocaleDateString()}`}
+                            </span>
+                          </div>
+                          
+                          <div className="flex items-center space-x-2">
+                            <button
+                              onClick={() => setExpandedCard(expandedCard === application._id ? null : application._id)}
+                              className="text-gray-400 hover:text-gray-600"
+                            >
+                              <MoreVertical className="h-4 w-4" />
+                            </button>
                           </div>
                         </div>
                       </div>
@@ -600,7 +695,6 @@ const ApplicationsPage = () => {
                     
                     {/* Action Buttons */}
                     <div className="flex items-center space-x-2 ml-4">
-                      {/* View Button */}
                       <Link
                         to={`/applications/${application._id}`}
                         className="inline-flex items-center px-3 py-1 border border-gray-300 shadow-sm text-xs leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
@@ -609,7 +703,6 @@ const ApplicationsPage = () => {
                         View
                       </Link>
                       
-                      {/* Edit Button - Only for students on draft/rejected applications */}
                       {canEdit(application) && (
                         <Link
                           to={`/applications/${application._id}/edit`}
@@ -620,7 +713,6 @@ const ApplicationsPage = () => {
                         </Link>
                       )}
                       
-                      {/* Submit Button - Only for students on draft applications */}
                       {canSubmit(application) && (
                         <button
                           onClick={() => handleSubmitApplication(application._id)}
@@ -636,7 +728,6 @@ const ApplicationsPage = () => {
                         </button>
                       )}
                       
-                      {/* Documents Button */}
                       <Link
                         to={`/applications/${application._id}/documents`}
                         className="inline-flex items-center px-3 py-1 border border-purple-300 shadow-sm text-xs leading-4 font-medium rounded-md text-purple-700 bg-purple-50 hover:bg-purple-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
@@ -647,7 +738,7 @@ const ApplicationsPage = () => {
                     </div>
                   </div>
                   
-                  {/* Additional Info for rejected applications */}
+                  {/* Status-specific Messages */}
                   {application.status === 'rejected' && application.approvalComments && (
                     <div className="mt-3 bg-red-50 border border-red-200 rounded-md p-3">
                       <p className="text-sm text-red-800">
@@ -656,7 +747,6 @@ const ApplicationsPage = () => {
                     </div>
                   )}
                   
-                  {/* Additional Info for approved applications */}
                   {application.status === 'approved' && application.approvalComments && (
                     <div className="mt-3 bg-green-50 border border-green-200 rounded-md p-3">
                       <p className="text-sm text-green-800">

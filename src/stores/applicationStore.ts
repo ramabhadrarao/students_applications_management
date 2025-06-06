@@ -1,9 +1,125 @@
-// File: src/stores/applicationStore.ts
-// Purpose: Enhanced application store with improved functionality
+// src/stores/applicationStore.ts - Enhanced with all schema fields
 
 import { create } from 'zustand';
 import axios from 'axios';
-import { Application, ApplicationStatusHistory } from '../types';
+
+// Updated Application interface to match backend schema
+interface Application {
+  _id: string;
+  applicationNumber: string;
+  userId: string;
+  programId: string | {
+    _id: string;
+    programName: string;
+    programCode: string;
+    department: string;
+    programType: string;
+    durationYears: number;
+    totalSeats: number;
+  };
+  academicYear: string;
+  status: 'draft' | 'submitted' | 'under_review' | 'approved' | 'rejected' | 'cancelled' | 'frozen';
+  submittedAt?: Date;
+  reviewedBy?: string | {
+    _id: string;
+    email: string;
+  };
+  reviewedAt?: Date;
+  approvalComments?: string;
+
+  // Student personal details
+  studentName: string;
+  fatherName: string;
+  motherName: string;
+  dateOfBirth: Date;
+  gender: 'Male' | 'Female' | 'Other';
+  aadharNumber?: string;
+  mobileNumber: string;
+  parentMobile?: string;
+  guardianMobile?: string;
+  email: string;
+  religion?: string;
+  caste?: string;
+  reservationCategory: 'OC' | 'BC-A' | 'BC-B' | 'BC-C' | 'BC-D' | 'BC-E' | 'SC' | 'ST' | 'EWS' | 'PH';
+
+  // Intermediate details (NEW FIELDS)
+  interBoard?: string;
+  interHallTicketNumber?: string;
+  sscHallTicketNumber?: string;
+  interPassYear?: number;
+  interPassoutType?: 'Regular' | 'Supplementary' | 'Improvement' | 'Other';
+  bridgeCourse?: string;
+  interCourseName?: string;
+  interMedium?: string;
+  interSecondLanguage?: string;
+  interMarksSecured?: number;
+  interMaximumMarks?: number;
+  interLanguagesTotal?: number;
+  interLanguagesPercentage?: number;
+  interGroupSubjectsPercentage?: number;
+  interCollegeName?: string;
+
+  // Address
+  presentAddress?: {
+    doorNo?: string;
+    street?: string;
+    village?: string;
+    mandal?: string;
+    district?: string;
+    pincode?: string;
+  };
+  permanentAddress?: {
+    doorNo?: string;
+    street?: string;
+    village?: string;
+    mandal?: string;
+    district?: string;
+    pincode?: string;
+  };
+
+  // Other Info (NEW FIELDS)
+  identificationMarks?: string[];
+  specialReservation?: string;
+  isPhysicallyHandicapped: boolean;
+  sadaramNumber?: string;
+  meesevaDetails?: {
+    casteCertificate?: string;
+    incomeCertificate?: string;
+  };
+  rationCardNumber?: string;
+  oamdcNumber?: string;
+
+  // Study history (NEW FIELD)
+  studyDetails?: Array<{
+    className?: string;
+    placeOfStudy?: string;
+    institutionName?: string;
+  }>;
+
+  dateCreated: Date;
+  dateUpdated: Date;
+
+  // For frontend permissions
+  permissions?: {
+    canEdit: boolean;
+    canSubmit: boolean;
+    canReview: boolean;
+    canDelete: boolean;
+  };
+}
+
+interface ApplicationStatusHistory {
+  _id: string;
+  applicationId: string;
+  fromStatus?: string;
+  toStatus: string;
+  changedBy?: {
+    _id: string;
+    email: string;
+  };
+  remarks?: string;
+  dateCreated: Date;
+}
 
 interface ApplicationFilters {
   status?: string;
@@ -98,7 +214,7 @@ interface ApplicationState {
     canBulkEdit: boolean;
   };
   loading: boolean;
-  submitLoading: string | null; // Track which application is being submitted
+  submitLoading: string | null;
   bulkLoading: boolean;
   error: string | null;
   
@@ -156,13 +272,11 @@ const useApplicationStore = create<ApplicationState>((set, get) => ({
     try {
       set({ loading: true, error: null });
       
-      // Merge with current filters
       const currentFilters = get().filters;
       const finalFilters = { ...currentFilters, ...filters };
       
       console.log('📋 Fetching applications with filters:', finalFilters);
       
-      // Build query string from filters
       const queryParams = new URLSearchParams();
       Object.entries(finalFilters).forEach(([key, value]) => {
         if (value !== undefined && value !== null && value !== '') {
@@ -222,10 +336,23 @@ const useApplicationStore = create<ApplicationState>((set, get) => ({
       set({ loading: true, error: null });
       console.log('📝 Creating application...');
       
-      const { data } = await axios.post('/api/applications', applicationData);
+      // Clean the data before sending
+      const cleanedData = {
+        ...applicationData,
+        // Ensure arrays are properly handled
+        identificationMarks: applicationData.identificationMarks?.filter(mark => mark) || [],
+        studyDetails: applicationData.studyDetails?.filter(study => 
+          study.className || study.placeOfStudy || study.institutionName
+        ) || [],
+        // Ensure nested objects are properly structured
+        presentAddress: applicationData.presentAddress || {},
+        permanentAddress: applicationData.permanentAddress || {},
+        meesevaDetails: applicationData.meesevaDetails || {}
+      };
+      
+      const { data } = await axios.post('/api/applications', cleanedData);
       console.log(`✅ Application created:`, data.applicationNumber);
       
-      // Update applications list
       const currentApplications = get().applications;
       set({ 
         applications: [data, ...currentApplications], 
@@ -249,7 +376,21 @@ const useApplicationStore = create<ApplicationState>((set, get) => ({
       set({ loading: true, error: null });
       console.log(`📝 Updating application: ${id}`);
       
-      const { data } = await axios.put(`/api/applications/${id}`, applicationData);
+      // Clean the data before sending
+      const cleanedData = {
+        ...applicationData,
+        // Ensure arrays are properly handled
+        identificationMarks: applicationData.identificationMarks?.filter(mark => mark) || [],
+        studyDetails: applicationData.studyDetails?.filter(study => 
+          study.className || study.placeOfStudy || study.institutionName
+        ) || [],
+        // Ensure nested objects are properly structured
+        presentAddress: applicationData.presentAddress || {},
+        permanentAddress: applicationData.permanentAddress || {},
+        meesevaDetails: applicationData.meesevaDetails || {}
+      };
+      
+      const { data } = await axios.put(`/api/applications/${id}`, cleanedData);
       console.log(`✅ Application updated:`, data.applicationNumber);
       
       // Update applications list and current application

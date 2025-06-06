@@ -71,13 +71,26 @@ export interface Application {
   _id: string;
   applicationNumber: string;
   userId: string;
-  programId: string;
+  programId: string | {
+    _id: string;
+    programName: string;
+    programCode: string;
+    department: string;
+    programType: string;
+    durationYears: number;
+    totalSeats: number;
+  };
   academicYear: string;
   status: ApplicationStatus;
   submittedAt?: Date;
-  reviewedBy?: string;
+  reviewedBy?: string | {
+    _id: string;
+    email: string;
+  };
   reviewedAt?: Date;
   approvalComments?: string;
+
+  // Student personal details
   studentName: string;
   fatherName: string;
   motherName: string;
@@ -88,6 +101,28 @@ export interface Application {
   parentMobile?: string;
   guardianMobile?: string;
   email: string;
+  religion?: string;
+  caste?: string;
+  reservationCategory: 'OC' | 'BC-A' | 'BC-B' | 'BC-C' | 'BC-D' | 'BC-E' | 'SC' | 'ST' | 'EWS' | 'PH';
+
+  // Intermediate details (NEW FIELDS from schema)
+  interBoard?: string;
+  interHallTicketNumber?: string;
+  sscHallTicketNumber?: string;
+  interPassYear?: number;
+  interPassoutType?: 'Regular' | 'Supplementary' | 'Improvement' | 'Other';
+  bridgeCourse?: string;
+  interCourseName?: string;
+  interMedium?: string;
+  interSecondLanguage?: string;
+  interMarksSecured?: number;
+  interMaximumMarks?: number;
+  interLanguagesTotal?: number;
+  interLanguagesPercentage?: number;
+  interGroupSubjectsPercentage?: number;
+  interCollegeName?: string;
+
+  // Address
   presentAddress?: {
     doorNo?: string;
     street?: string;
@@ -104,22 +139,36 @@ export interface Application {
     district?: string;
     pincode?: string;
   };
-  religion?: string;
-  caste?: string;
-  reservationCategory?: string;
+
+  // Other Info (NEW FIELDS from schema)
+  identificationMarks?: string[];
+  specialReservation?: string; // CAP / SPORTS / NCC / etc.
   isPhysicallyHandicapped: boolean;
   sadaramNumber?: string;
-  identificationMarks?: string[];
-  specialReservation?: string;
   meesevaDetails?: {
     casteCertificate?: string;
     incomeCertificate?: string;
   };
   rationCardNumber?: string;
-  photoAttachmentId?: string;
-  signatureAttachmentId?: string;
+  oamdcNumber?: string;
+
+  // Study history (NEW FIELD from schema)
+  studyDetails?: Array<{
+    className?: string; // 12th, 11th, etc.
+    placeOfStudy?: string;
+    institutionName?: string;
+  }>;
+
   dateCreated: Date;
   dateUpdated: Date;
+
+  // For frontend permissions
+  permissions?: {
+    canEdit: boolean;
+    canSubmit: boolean;
+    canReview: boolean;
+    canDelete: boolean;
+  };
 }
 
 export interface ApplicationDocument {

@@ -1,6 +1,8 @@
+// src/pages/ApplicationFormPage.tsx - Enhanced with all schema fields
+
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Save, Send, ArrowLeft } from 'lucide-react';
+import { Save, Send, ArrowLeft, Plus, Trash2, Copy } from 'lucide-react';
 import useApplicationStore from '../stores/applicationStore';
 import useProgramStore from '../stores/programStore';
 import useAuthStore from '../stores/authStore';
@@ -23,6 +25,8 @@ const ApplicationFormPage = () => {
   const [formData, setFormData] = useState({
     programId: '',
     academicYear: '2025-26',
+    
+    // Personal Information
     studentName: '',
     fatherName: '',
     motherName: '',
@@ -33,6 +37,34 @@ const ApplicationFormPage = () => {
     parentMobile: '',
     guardianMobile: '',
     email: user?.email || '',
+    religion: '',
+    caste: '',
+    reservationCategory: 'OC',
+    isPhysicallyHandicapped: false,
+    sadaramNumber: '',
+    identificationMarks: ['', ''],
+    specialReservation: '',
+    rationCardNumber: '',
+    oamdcNumber: '',
+    
+    // Intermediate Details
+    interBoard: '',
+    interHallTicketNumber: '',
+    sscHallTicketNumber: '',
+    interPassYear: undefined,
+    interPassoutType: '',
+    bridgeCourse: '',
+    interCourseName: '',
+    interMedium: '',
+    interSecondLanguage: '',
+    interMarksSecured: undefined,
+    interMaximumMarks: undefined,
+    interLanguagesTotal: undefined,
+    interLanguagesPercentage: undefined,
+    interGroupSubjectsPercentage: undefined,
+    interCollegeName: '',
+    
+    // Address
     presentAddress: {
       doorNo: '',
       street: '',
@@ -49,30 +81,22 @@ const ApplicationFormPage = () => {
       district: '',
       pincode: ''
     },
-    religion: '',
-    caste: '',
-    reservationCategory: 'OC',
-    isPhysicallyHandicapped: false,
-    sadaramNumber: '',
-    identificationMarks: ['', ''],
-    specialReservation: '',
+    
+    // Study Details (last 7 years)
+    studyDetails: [
+      { className: '', placeOfStudy: '', institutionName: '' }
+    ],
+    
+    // Meeseva Details
     meesevaDetails: {
       casteCertificate: '',
       incomeCertificate: ''
-    },
-    rationCardNumber: ''
+    }
   });
 
-  // Debug logging
-  useEffect(() => {
-    console.log('Programs loading state:', programsLoading);
-    console.log('Programs error:', programsError);
-    console.log('Programs data:', programs);
-    console.log('Programs count:', programs?.length);
-  }, [programs, programsLoading, programsError]);
+  const [sameAddress, setSameAddress] = useState(false);
 
   useEffect(() => {
-    // Fetch programs first
     console.log('Fetching programs...');
     fetchPrograms().then(() => {
       console.log('Programs fetch completed');
@@ -87,7 +111,12 @@ const ApplicationFormPage = () => {
         if (application) {
           setFormData({
             ...application,
-            dateOfBirth: new Date(application.dateOfBirth).toISOString().split('T')[0]
+            dateOfBirth: new Date(application.dateOfBirth).toISOString().split('T')[0],
+            identificationMarks: application.identificationMarks || ['', ''],
+            studyDetails: application.studyDetails && application.studyDetails.length > 0 
+              ? application.studyDetails 
+              : [{ className: '', placeOfStudy: '', institutionName: '' }],
+            meesevaDetails: application.meesevaDetails || { casteCertificate: '', incomeCertificate: '' }
           });
         }
       }).catch((err) => {
@@ -106,15 +135,52 @@ const ApplicationFormPage = () => {
         ...prev,
         [parent]: {
           ...prev[parent as keyof typeof prev] as any,
-          [child]: value
+          [child]: type === 'number' ? (value ? Number(value) : undefined) : value
         }
       }));
     } else {
       setFormData(prev => ({
         ...prev,
-        [name]: type === 'checkbox' ? checked : value
+        [name]: type === 'checkbox' ? checked : 
+                type === 'number' ? (value ? Number(value) : undefined) : value
       }));
     }
+  };
+
+  const handleArrayChange = (index: number, field: string, value: string) => {
+    if (field === 'identificationMarks') {
+      const newMarks = [...formData.identificationMarks];
+      newMarks[index] = value;
+      setFormData(prev => ({ ...prev, identificationMarks: newMarks }));
+    }
+  };
+
+  const handleStudyDetailsChange = (index: number, field: string, value: string) => {
+    const newStudyDetails = [...formData.studyDetails];
+    newStudyDetails[index] = { ...newStudyDetails[index], [field]: value };
+    setFormData(prev => ({ ...prev, studyDetails: newStudyDetails }));
+  };
+
+  const addStudyDetail = () => {
+    setFormData(prev => ({
+      ...prev,
+      studyDetails: [...prev.studyDetails, { className: '', placeOfStudy: '', institutionName: '' }]
+    }));
+  };
+
+  const removeStudyDetail = (index: number) => {
+    if (formData.studyDetails.length > 1) {
+      const newStudyDetails = formData.studyDetails.filter((_, i) => i !== index);
+      setFormData(prev => ({ ...prev, studyDetails: newStudyDetails }));
+    }
+  };
+
+  const copyPresentToPermanent = () => {
+    setFormData(prev => ({
+      ...prev,
+      permanentAddress: { ...prev.presentAddress }
+    }));
+    setSameAddress(true);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -203,18 +269,6 @@ const ApplicationFormPage = () => {
         {/* Program Selection */}
         <div className="bg-white shadow rounded-lg p-6">
           <h2 className="text-lg font-medium text-gray-900 mb-4">Program Details</h2>
-          
-          {/* Debug info for programs */}
-          {process.env.NODE_ENV === 'undebug' && (
-            <div className="mb-4 p-3 bg-gray-100 rounded text-sm">
-              <strong>Debug Info:</strong><br />
-              Programs Loading: {programsLoading ? 'Yes' : 'No'}<br />
-              Programs Count: {programs?.length || 0}<br />
-              Programs Error: {programsError || 'None'}<br />
-              Sample Program: {programs?.[0]?.programName || 'No programs found'}
-            </div>
-          )}
-
           <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
             <div>
               <label className="block text-sm font-medium text-gray-700">
@@ -247,14 +301,6 @@ const ApplicationFormPage = () => {
                   )
                 )}
               </select>
-              {programsLoading && (
-                <p className="mt-1 text-sm text-blue-600">Loading available programs...</p>
-              )}
-              {!programsLoading && (!programs || programs.length === 0) && (
-                <p className="mt-1 text-sm text-red-600">
-                  No programs found. Please contact administrator.
-                </p>
-              )}
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700">
@@ -280,9 +326,7 @@ const ApplicationFormPage = () => {
           <h2 className="text-lg font-medium text-gray-900 mb-4">Personal Information</h2>
           <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
             <div>
-              <label className="block text-sm font-medium text-gray-700">
-                Student Name *
-              </label>
+              <label className="block text-sm font-medium text-gray-700">Student Name *</label>
               <input
                 type="text"
                 name="studentName"
@@ -294,9 +338,7 @@ const ApplicationFormPage = () => {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700">
-                Father's Name *
-              </label>
+              <label className="block text-sm font-medium text-gray-700">Father's Name *</label>
               <input
                 type="text"
                 name="fatherName"
@@ -308,9 +350,7 @@ const ApplicationFormPage = () => {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700">
-                Mother's Name *
-              </label>
+              <label className="block text-sm font-medium text-gray-700">Mother's Name *</label>
               <input
                 type="text"
                 name="motherName"
@@ -322,9 +362,7 @@ const ApplicationFormPage = () => {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700">
-                Date of Birth *
-              </label>
+              <label className="block text-sm font-medium text-gray-700">Date of Birth *</label>
               <input
                 type="date"
                 name="dateOfBirth"
@@ -335,9 +373,7 @@ const ApplicationFormPage = () => {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700">
-                Gender *
-              </label>
+              <label className="block text-sm font-medium text-gray-700">Gender *</label>
               <select
                 name="gender"
                 value={formData.gender}
@@ -352,9 +388,7 @@ const ApplicationFormPage = () => {
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700">
-                Aadhar Number
-              </label>
+              <label className="block text-sm font-medium text-gray-700">Aadhar Number</label>
               <input
                 type="text"
                 name="aadharNumber"
@@ -374,9 +408,7 @@ const ApplicationFormPage = () => {
           <h2 className="text-lg font-medium text-gray-900 mb-4">Contact Information</h2>
           <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
             <div>
-              <label className="block text-sm font-medium text-gray-700">
-                Mobile Number *
-              </label>
+              <label className="block text-sm font-medium text-gray-700">Mobile Number *</label>
               <input
                 type="tel"
                 name="mobileNumber"
@@ -390,9 +422,7 @@ const ApplicationFormPage = () => {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700">
-                Email *
-              </label>
+              <label className="block text-sm font-medium text-gray-700">Email *</label>
               <input
                 type="email"
                 name="email"
@@ -404,9 +434,7 @@ const ApplicationFormPage = () => {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700">
-                Parent's Mobile
-              </label>
+              <label className="block text-sm font-medium text-gray-700">Parent's Mobile</label>
               <input
                 type="tel"
                 name="parentMobile"
@@ -419,9 +447,7 @@ const ApplicationFormPage = () => {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700">
-                Guardian's Mobile
-              </label>
+              <label className="block text-sm font-medium text-gray-700">Guardian's Mobile</label>
               <input
                 type="tel"
                 name="guardianMobile"
@@ -436,14 +462,338 @@ const ApplicationFormPage = () => {
           </div>
         </div>
 
-        {/* Reservation Details */}
+        {/* Intermediate/Education Details */}
         <div className="bg-white shadow rounded-lg p-6">
-          <h2 className="text-lg font-medium text-gray-900 mb-4">Reservation Details</h2>
+          <h2 className="text-lg font-medium text-gray-900 mb-4">Education Details (Intermediate/+2)</h2>
           <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
             <div>
-              <label className="block text-sm font-medium text-gray-700">
-                Religion
-              </label>
+              <label className="block text-sm font-medium text-gray-700">Board/University</label>
+              <input
+                type="text"
+                name="interBoard"
+                value={formData.interBoard}
+                onChange={handleInputChange}
+                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                placeholder="Inter Board/University"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700">Inter Hall Ticket Number</label>
+              <input
+                type="text"
+                name="interHallTicketNumber"
+                value={formData.interHallTicketNumber}
+                onChange={handleInputChange}
+                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                placeholder="Inter hall ticket number"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700">SSC Hall Ticket Number</label>
+              <input
+                type="text"
+                name="sscHallTicketNumber"
+                value={formData.sscHallTicketNumber}
+                onChange={handleInputChange}
+                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                placeholder="SSC hall ticket number"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700">Inter Pass Year</label>
+              <input
+                type="number"
+                name="interPassYear"
+                value={formData.interPassYear || ''}
+                onChange={handleInputChange}
+                min="2000"
+                max="2030"
+                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                placeholder="YYYY"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700">Passout Type</label>
+              <select
+                name="interPassoutType"
+                value={formData.interPassoutType}
+                onChange={handleInputChange}
+                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+              >
+                <option value="">Select type</option>
+                <option value="Regular">Regular</option>
+                <option value="Supplementary">Supplementary</option>
+                <option value="Improvement">Improvement</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700">Course Name</label>
+              <input
+                type="text"
+                name="interCourseName"
+                value={formData.interCourseName}
+                onChange={handleInputChange}
+                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                placeholder="e.g., MPC, BiPC, CEC"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700">Medium of Instruction</label>
+              <input
+                type="text"
+                name="interMedium"
+                value={formData.interMedium}
+                onChange={handleInputChange}
+                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                placeholder="English/Telugu/Hindi"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700">Second Language</label>
+              <input
+                type="text"
+                name="interSecondLanguage"
+                value={formData.interSecondLanguage}
+                onChange={handleInputChange}
+                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                placeholder="Second language studied"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700">Marks Secured</label>
+              <input
+                type="number"
+                name="interMarksSecured"
+                value={formData.interMarksSecured || ''}
+                onChange={handleInputChange}
+                min="0"
+                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                placeholder="Total marks secured"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700">Maximum Marks</label>
+              <input
+                type="number"
+                name="interMaximumMarks"
+                value={formData.interMaximumMarks || ''}
+                onChange={handleInputChange}
+                min="0"
+                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                placeholder="Maximum marks"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700">Languages Percentage</label>
+              <input
+                type="number"
+                name="interLanguagesPercentage"
+                value={formData.interLanguagesPercentage || ''}
+                onChange={handleInputChange}
+                min="0"
+                max="100"
+                step="0.01"
+                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                placeholder="Languages percentage"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700">Group Subjects Percentage</label>
+              <input
+                type="number"
+                name="interGroupSubjectsPercentage"
+                value={formData.interGroupSubjectsPercentage || ''}
+                onChange={handleInputChange}
+                min="0"
+                max="100"
+                step="0.01"
+                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                placeholder="Group subjects percentage"
+              />
+            </div>
+            <div className="sm:col-span-2">
+              <label className="block text-sm font-medium text-gray-700">College Name</label>
+              <input
+                type="text"
+                name="interCollegeName"
+                value={formData.interCollegeName}
+                onChange={handleInputChange}
+                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                placeholder="Name of intermediate college"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700">Bridge Course</label>
+              <input
+                type="text"
+                name="bridgeCourse"
+                value={formData.bridgeCourse}
+                onChange={handleInputChange}
+                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                placeholder="Bridge course details (if any)"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Address Information */}
+        <div className="bg-white shadow rounded-lg p-6">
+          <h2 className="text-lg font-medium text-gray-900 mb-4">Address Information</h2>
+          
+          {/* Present Address */}
+          <div className="mb-6">
+            <h3 className="text-md font-medium text-gray-700 mb-3">Present Address</h3>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Door No.</label>
+                <input
+                  type="text"
+                  name="presentAddress.doorNo"
+                  value={formData.presentAddress.doorNo}
+                  onChange={handleInputChange}
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Street</label>
+                <input
+                  type="text"
+                  name="presentAddress.street"
+                  value={formData.presentAddress.street}
+                  onChange={handleInputChange}
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Village/Town</label>
+                <input
+                  type="text"
+                  name="presentAddress.village"
+                  value={formData.presentAddress.village}
+                  onChange={handleInputChange}
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Mandal</label>
+                <input
+                  type="text"
+                  name="presentAddress.mandal"
+                  value={formData.presentAddress.mandal}
+                  onChange={handleInputChange}
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">District</label>
+                <input
+                  type="text"
+                  name="presentAddress.district"
+                  value={formData.presentAddress.district}
+                  onChange={handleInputChange}
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Pincode</label>
+                <input
+                  type="text"
+                  name="presentAddress.pincode"
+                  value={formData.presentAddress.pincode}
+                  onChange={handleInputChange}
+                  pattern="[0-9]{6}"
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Permanent Address */}
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-md font-medium text-gray-700">Permanent Address</h3>
+              <button
+                type="button"
+                onClick={copyPresentToPermanent}
+                className="inline-flex items-center px-3 py-1 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              >
+                <Copy className="h-3 w-3 mr-1" />
+                Same as Present
+              </button>
+            </div>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Door No.</label>
+                <input
+                  type="text"
+                  name="permanentAddress.doorNo"
+                  value={formData.permanentAddress.doorNo}
+                  onChange={handleInputChange}
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Street</label>
+                <input
+                  type="text"
+                  name="permanentAddress.street"
+                  value={formData.permanentAddress.street}
+                  onChange={handleInputChange}
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Village/Town</label>
+                <input
+                  type="text"
+                  name="permanentAddress.village"
+                  value={formData.permanentAddress.village}
+                  onChange={handleInputChange}
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Mandal</label>
+                <input
+                  type="text"
+                  name="permanentAddress.mandal"
+                  value={formData.permanentAddress.mandal}
+                  onChange={handleInputChange}
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">District</label>
+                <input
+                  type="text"
+                  name="permanentAddress.district"
+                  value={formData.permanentAddress.district}
+                  onChange={handleInputChange}
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Pincode</label>
+                <input
+                  type="text"
+                  name="permanentAddress.pincode"
+                  value={formData.permanentAddress.pincode}
+                  onChange={handleInputChange}
+                  pattern="[0-9]{6}"
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Reservation Details */}
+        <div className="bg-white shadow rounded-lg p-6">
+          <h2 className="text-lg font-medium text-gray-900 mb-4">Reservation & Category Details</h2>
+          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+            <div>
+              <label className="block text-sm font-medium text-gray-700">Religion</label>
               <input
                 type="text"
                 name="religion"
@@ -454,9 +804,7 @@ const ApplicationFormPage = () => {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700">
-                Caste
-              </label>
+              <label className="block text-sm font-medium text-gray-700">Caste</label>
               <input
                 type="text"
                 name="caste"
@@ -467,9 +815,7 @@ const ApplicationFormPage = () => {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700">
-                Reservation Category *
-              </label>
+              <label className="block text-sm font-medium text-gray-700">Reservation Category *</label>
               <select
                 name="reservationCategory"
                 value={formData.reservationCategory}
@@ -490,6 +836,17 @@ const ApplicationFormPage = () => {
               </select>
             </div>
             <div>
+              <label className="block text-sm font-medium text-gray-700">Special Reservation</label>
+              <input
+                type="text"
+                name="specialReservation"
+                value={formData.specialReservation}
+                onChange={handleInputChange}
+                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                placeholder="CAP/SPORTS/NCC/etc."
+              />
+            </div>
+            <div>
               <div className="flex items-center mt-6">
                 <input
                   type="checkbox"
@@ -503,6 +860,152 @@ const ApplicationFormPage = () => {
                 </label>
               </div>
             </div>
+          </div>
+        </div>
+
+        {/* Additional Details */}
+        <div className="bg-white shadow rounded-lg p-6">
+          <h2 className="text-lg font-medium text-gray-900 mb-4">Additional Information</h2>
+          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+            <div>
+              <label className="block text-sm font-medium text-gray-700">Sadaram Number</label>
+              <input
+                type="text"
+                name="sadaramNumber"
+                value={formData.sadaramNumber}
+                onChange={handleInputChange}
+                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                placeholder="Sadaram number"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700">Ration Card Number</label>
+              <input
+                type="text"
+                name="rationCardNumber"
+                value={formData.rationCardNumber}
+                onChange={handleInputChange}
+                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                placeholder="Ration card number"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700">OAMDC Number</label>
+              <input
+                type="text"
+                name="oamdcNumber"
+                value={formData.oamdcNumber}
+                onChange={handleInputChange}
+                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                placeholder="OAMDC number"
+              />
+            </div>
+            
+            {/* Identification Marks */}
+            <div className="sm:col-span-2">
+              <label className="block text-sm font-medium text-gray-700 mb-2">Identification Marks</label>
+              <div className="space-y-2">
+                {formData.identificationMarks.map((mark, index) => (
+                  <input
+                    key={index}
+                    type="text"
+                    value={mark}
+                    onChange={(e) => handleArrayChange(index, 'identificationMarks', e.target.value)}
+                    className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                    placeholder={`Identification mark ${index + 1}`}
+                  />
+                ))}
+              </div>
+            </div>
+
+            {/* Meeseva Details */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700">Caste Certificate (Meeseva)</label>
+              <input
+                type="text"
+                name="meesevaDetails.casteCertificate"
+                value={formData.meesevaDetails.casteCertificate}
+                onChange={handleInputChange}
+                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                placeholder="Caste certificate number"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700">Income Certificate (Meeseva)</label>
+              <input
+                type="text"
+                name="meesevaDetails.incomeCertificate"
+                value={formData.meesevaDetails.incomeCertificate}
+                onChange={handleInputChange}
+                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                placeholder="Income certificate number"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Study History */}
+        <div className="bg-white shadow rounded-lg p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-medium text-gray-900">Study History (Last 7 Years)</h2>
+            <button
+              type="button"
+              onClick={addStudyDetail}
+              className="inline-flex items-center px-3 py-1 border border-transparent text-sm leading-4 font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+            >
+              <Plus className="h-3 w-3 mr-1" />
+              Add Year
+            </button>
+          </div>
+          <div className="space-y-4">
+            {formData.studyDetails.map((study, index) => (
+              <div key={index} className="border border-gray-200 rounded-lg p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="text-sm font-medium text-gray-700">Study Detail {index + 1}</h4>
+                  {formData.studyDetails.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => removeStudyDetail(index)}
+                      className="text-red-600 hover:text-red-800"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Class/Year</label>
+                    <input
+                      type="text"
+                      value={study.className}
+                      onChange={(e) => handleStudyDetailsChange(index, 'className', e.target.value)}
+                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                      placeholder="e.g., 12th, 11th, etc."
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Place of Study</label>
+                    <input
+                      type="text"
+                      value={study.placeOfStudy}
+                      onChange={(e) => handleStudyDetailsChange(index, 'placeOfStudy', e.target.value)}
+                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                      placeholder="City/Town"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Institution Name</label>
+                    <input
+                      type="text"
+                      value={study.institutionName}
+                      onChange={(e) => handleStudyDetailsChange(index, 'institutionName', e.target.value)}
+                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                      placeholder="School/College name"
+                    />
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
 
