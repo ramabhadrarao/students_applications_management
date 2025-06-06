@@ -9,7 +9,7 @@ const ApplicationFormPage = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const { user } = useAuthStore();
-  const { programs, fetchPrograms } = useProgramStore();
+  const { programs, loading: programsLoading, error: programsError, fetchPrograms } = useProgramStore();
   const { 
     currentApplication,
     loading,
@@ -63,10 +63,26 @@ const ApplicationFormPage = () => {
     rationCardNumber: ''
   });
 
+  // Debug logging
   useEffect(() => {
-    fetchPrograms();
+    console.log('Programs loading state:', programsLoading);
+    console.log('Programs error:', programsError);
+    console.log('Programs data:', programs);
+    console.log('Programs count:', programs?.length);
+  }, [programs, programsLoading, programsError]);
+
+  useEffect(() => {
+    // Fetch programs first
+    console.log('Fetching programs...');
+    fetchPrograms().then(() => {
+      console.log('Programs fetch completed');
+    }).catch((err) => {
+      console.error('Error fetching programs:', err);
+    });
     
+    // If editing, fetch application data
     if (id) {
+      console.log('Fetching application by ID:', id);
       fetchApplicationById(id).then(application => {
         if (application) {
           setFormData({
@@ -74,19 +90,22 @@ const ApplicationFormPage = () => {
             dateOfBirth: new Date(application.dateOfBirth).toISOString().split('T')[0]
           });
         }
+      }).catch((err) => {
+        console.error('Error fetching application:', err);
       });
     }
-  }, [id]);
+  }, [id, fetchPrograms, fetchApplicationById]);
 
-  const handleInputChange = (e) => {
-    const { name, value, type, checked } = e.target;
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+    const { name, value, type } = e.target;
+    const checked = (e.target as HTMLInputElement).checked;
     
     if (name.includes('.')) {
       const [parent, child] = name.split('.');
       setFormData(prev => ({
         ...prev,
         [parent]: {
-          ...prev[parent],
+          ...prev[parent as keyof typeof prev] as any,
           [child]: value
         }
       }));
@@ -98,7 +117,7 @@ const ApplicationFormPage = () => {
     }
   };
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     try {
@@ -114,6 +133,8 @@ const ApplicationFormPage = () => {
   };
 
   const handleSubmitApplication = async () => {
+    if (!id) return;
+    
     try {
       await submitApplication(id);
       navigate('/applications');
@@ -172,33 +193,72 @@ const ApplicationFormPage = () => {
         </div>
       )}
 
+      {programsError && (
+        <div className="bg-red-100 p-4 rounded-md text-red-800">
+          <strong>Programs Error:</strong> {programsError}
+        </div>
+      )}
+
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Program Selection */}
         <div className="bg-white shadow rounded-lg p-6">
           <h2 className="text-lg font-medium text-gray-900 mb-4">Program Details</h2>
+          
+          {/* Debug info for programs */}
+          {process.env.NODE_ENV === 'undebug' && (
+            <div className="mb-4 p-3 bg-gray-100 rounded text-sm">
+              <strong>Debug Info:</strong><br />
+              Programs Loading: {programsLoading ? 'Yes' : 'No'}<br />
+              Programs Count: {programs?.length || 0}<br />
+              Programs Error: {programsError || 'None'}<br />
+              Sample Program: {programs?.[0]?.programName || 'No programs found'}
+            </div>
+          )}
+
           <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
             <div>
               <label className="block text-sm font-medium text-gray-700">
-                Program
+                Program *
               </label>
               <select
                 name="programId"
                 value={formData.programId}
                 onChange={handleInputChange}
                 required
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                disabled={programsLoading}
+                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm disabled:bg-gray-100"
               >
-                <option value="">Select Program</option>
-                {programs.map(program => (
-                  <option key={program._id} value={program._id}>
-                    {program.programName}
-                  </option>
-                ))}
+                <option value="">
+                  {programsLoading ? 'Loading programs...' : 'Select Program'}
+                </option>
+                {programs && programs.length > 0 ? (
+                  programs
+                    .filter(program => program.isActive)
+                    .map(program => (
+                      <option key={program._id} value={program._id}>
+                        {program.programName} ({program.programCode})
+                      </option>
+                    ))
+                ) : (
+                  !programsLoading && (
+                    <option value="" disabled>
+                      No programs available
+                    </option>
+                  )
+                )}
               </select>
+              {programsLoading && (
+                <p className="mt-1 text-sm text-blue-600">Loading available programs...</p>
+              )}
+              {!programsLoading && (!programs || programs.length === 0) && (
+                <p className="mt-1 text-sm text-red-600">
+                  No programs found. Please contact administrator.
+                </p>
+              )}
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700">
-                Academic Year
+                Academic Year *
               </label>
               <select
                 name="academicYear"
@@ -209,6 +269,7 @@ const ApplicationFormPage = () => {
               >
                 <option value="2025-26">2025-26</option>
                 <option value="2024-25">2024-25</option>
+                <option value="2026-27">2026-27</option>
               </select>
             </div>
           </div>
@@ -220,7 +281,7 @@ const ApplicationFormPage = () => {
           <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
             <div>
               <label className="block text-sm font-medium text-gray-700">
-                Student Name
+                Student Name *
               </label>
               <input
                 type="text"
@@ -229,11 +290,12 @@ const ApplicationFormPage = () => {
                 onChange={handleInputChange}
                 required
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                placeholder="Enter your full name"
               />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700">
-                Father's Name
+                Father's Name *
               </label>
               <input
                 type="text"
@@ -242,11 +304,12 @@ const ApplicationFormPage = () => {
                 onChange={handleInputChange}
                 required
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                placeholder="Enter father's full name"
               />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700">
-                Mother's Name
+                Mother's Name *
               </label>
               <input
                 type="text"
@@ -255,11 +318,12 @@ const ApplicationFormPage = () => {
                 onChange={handleInputChange}
                 required
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                placeholder="Enter mother's full name"
               />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700">
-                Date of Birth
+                Date of Birth *
               </label>
               <input
                 type="date"
@@ -272,7 +336,7 @@ const ApplicationFormPage = () => {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700">
-                Gender
+                Gender *
               </label>
               <select
                 name="gender"
@@ -299,6 +363,7 @@ const ApplicationFormPage = () => {
                 pattern="[0-9]{12}"
                 title="Please enter a valid 12-digit Aadhar number"
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                placeholder="12-digit Aadhar number"
               />
             </div>
           </div>
@@ -310,7 +375,7 @@ const ApplicationFormPage = () => {
           <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
             <div>
               <label className="block text-sm font-medium text-gray-700">
-                Mobile Number
+                Mobile Number *
               </label>
               <input
                 type="tel"
@@ -321,6 +386,21 @@ const ApplicationFormPage = () => {
                 pattern="[0-9]{10}"
                 title="Please enter a valid 10-digit mobile number"
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                placeholder="10-digit mobile number"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700">
+                Email *
+              </label>
+              <input
+                type="email"
+                name="email"
+                value={formData.email}
+                onChange={handleInputChange}
+                required
+                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                placeholder="your.email@example.com"
               />
             </div>
             <div>
@@ -335,6 +415,7 @@ const ApplicationFormPage = () => {
                 pattern="[0-9]{10}"
                 title="Please enter a valid 10-digit mobile number"
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                placeholder="Parent's mobile number"
               />
             </div>
             <div>
@@ -349,189 +430,15 @@ const ApplicationFormPage = () => {
                 pattern="[0-9]{10}"
                 title="Please enter a valid 10-digit mobile number"
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">
-                Email
-              </label>
-              <input
-                type="email"
-                name="email"
-                value={formData.email}
-                onChange={handleInputChange}
-                required
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                placeholder="Guardian's mobile number"
               />
             </div>
           </div>
         </div>
 
-        {/* Present Address */}
+        {/* Reservation Details */}
         <div className="bg-white shadow rounded-lg p-6">
-          <h2 className="text-lg font-medium text-gray-900 mb-4">Present Address</h2>
-          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-            <div>
-              <label className="block text-sm font-medium text-gray-700">
-                Door No
-              </label>
-              <input
-                type="text"
-                name="presentAddress.doorNo"
-                value={formData.presentAddress.doorNo}
-                onChange={handleInputChange}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">
-                Street
-              </label>
-              <input
-                type="text"
-                name="presentAddress.street"
-                value={formData.presentAddress.street}
-                onChange={handleInputChange}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">
-                Village/Town
-              </label>
-              <input
-                type="text"
-                name="presentAddress.village"
-                value={formData.presentAddress.village}
-                onChange={handleInputChange}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">
-                Mandal
-              </label>
-              <input
-                type="text"
-                name="presentAddress.mandal"
-                value={formData.presentAddress.mandal}
-                onChange={handleInputChange}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">
-                District
-              </label>
-              <input
-                type="text"
-                name="presentAddress.district"
-                value={formData.presentAddress.district}
-                onChange={handleInputChange}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">
-                PIN Code
-              </label>
-              <input
-                type="text"
-                name="presentAddress.pincode"
-                value={formData.presentAddress.pincode}
-                onChange={handleInputChange}
-                pattern="[0-9]{6}"
-                title="Please enter a valid 6-digit PIN code"
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Permanent Address */}
-        <div className="bg-white shadow rounded-lg p-6">
-          <h2 className="text-lg font-medium text-gray-900 mb-4">Permanent Address</h2>
-          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-            <div>
-              <label className="block text-sm font-medium text-gray-700">
-                Door No
-              </label>
-              <input
-                type="text"
-                name="permanentAddress.doorNo"
-                value={formData.permanentAddress.doorNo}
-                onChange={handleInputChange}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">
-                Street
-              </label>
-              <input
-                type="text"
-                name="permanentAddress.street"
-                value={formData.permanentAddress.street}
-                onChange={handleInputChange}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">
-                Village/Town
-              </label>
-              <input
-                type="text"
-                name="permanentAddress.village"
-                value={formData.permanentAddress.village}
-                onChange={handleInputChange}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">
-                Mandal
-              </label>
-              <input
-                type="text"
-                name="permanentAddress.mandal"
-                value={formData.permanentAddress.mandal}
-                onChange={handleInputChange}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">
-                District
-              </label>
-              <input
-                type="text"
-                name="permanentAddress.district"
-                value={formData.permanentAddress.district}
-                onChange={handleInputChange}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">
-                PIN Code
-              </label>
-              <input
-                type="text"
-                name="permanentAddress.pincode"
-                value={formData.permanentAddress.pincode}
-                onChange={handleInputChange}
-                pattern="[0-9]{6}"
-                title="Please enter a valid 6-digit PIN code"
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Other Details */}
-        <div className="bg-white shadow rounded-lg p-6">
-          <h2 className="text-lg font-medium text-gray-900 mb-4">Other Details</h2>
+          <h2 className="text-lg font-medium text-gray-900 mb-4">Reservation Details</h2>
           <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
             <div>
               <label className="block text-sm font-medium text-gray-700">
@@ -543,6 +450,7 @@ const ApplicationFormPage = () => {
                 value={formData.religion}
                 onChange={handleInputChange}
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                placeholder="Enter religion"
               />
             </div>
             <div>
@@ -555,135 +463,45 @@ const ApplicationFormPage = () => {
                 value={formData.caste}
                 onChange={handleInputChange}
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                placeholder="Enter caste"
               />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700">
-                Reservation Category
+                Reservation Category *
               </label>
               <select
                 name="reservationCategory"
                 value={formData.reservationCategory}
                 onChange={handleInputChange}
+                required
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
               >
-                <option value="OC">OC</option>
+                <option value="OC">OC (Open Category)</option>
                 <option value="BC-A">BC-A</option>
                 <option value="BC-B">BC-B</option>
                 <option value="BC-C">BC-C</option>
                 <option value="BC-D">BC-D</option>
                 <option value="BC-E">BC-E</option>
-                <option value="SC">SC</option>
-                <option value="ST">ST</option>
-                <option value="EWS">EWS</option>
-                <option value="PH">PH</option>
+                <option value="SC">SC (Scheduled Caste)</option>
+                <option value="ST">ST (Scheduled Tribe)</option>
+                <option value="EWS">EWS (Economically Weaker Section)</option>
+                <option value="PH">PH (Physically Handicapped)</option>
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700">
-                Physically Handicapped
-              </label>
-              <div className="mt-2">
-                <label className="inline-flex items-center">
-                  <input
-                    type="checkbox"
-                    name="isPhysicallyHandicapped"
-                    checked={formData.isPhysicallyHandicapped}
-                    onChange={handleInputChange}
-                    className="rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                  />
-                  <span className="ml-2 text-sm text-gray-600">Yes</span>
-                </label>
-              </div>
-            </div>
-            {formData.isPhysicallyHandicapped && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  Sadaram Number
-                </label>
+              <div className="flex items-center mt-6">
                 <input
-                  type="text"
-                  name="sadaramNumber"
-                  value={formData.sadaramNumber}
+                  type="checkbox"
+                  name="isPhysicallyHandicapped"
+                  checked={formData.isPhysicallyHandicapped}
                   onChange={handleInputChange}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                 />
+                <label className="ml-2 block text-sm text-gray-900">
+                  Physically Handicapped
+                </label>
               </div>
-            )}
-            <div>
-              <label className="block text-sm font-medium text-gray-700">
-                Identification Mark 1
-              </label>
-              <input
-                type="text"
-                name="identificationMarks.0"
-                value={formData.identificationMarks[0]}
-                onChange={(e) => {
-                  const marks = [...formData.identificationMarks];
-                  marks[0] = e.target.value;
-                  setFormData(prev => ({ ...prev, identificationMarks: marks }));
-                }}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">
-                Identification Mark 2
-              </label>
-              <input
-                type="text"
-                name="identificationMarks.1"
-                value={formData.identificationMarks[1]}
-                onChange={(e) => {
-                  const marks = [...formData.identificationMarks];
-                  marks[1] = e.target.value;
-                  setFormData(prev => ({ ...prev, identificationMarks: marks }));
-                }}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Certificate Details */}
-        <div className="bg-white shadow rounded-lg p-6">
-          <h2 className="text-lg font-medium text-gray-900 mb-4">Certificate Details</h2>
-          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-            <div>
-              <label className="block text-sm font-medium text-gray-700">
-                Meeseva Caste Certificate
-              </label>
-              <input
-                type="text"
-                name="meesevaDetails.casteCertificate"
-                value={formData.meesevaDetails.casteCertificate}
-                onChange={handleInputChange}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">
-                Meeseva Income Certificate
-              </label>
-              <input
-                type="text"
-                name="meesevaDetails.incomeCertificate"
-                value={formData.meesevaDetails.incomeCertificate}
-                onChange={handleInputChange}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">
-                Ration Card Number
-              </label>
-              <input
-                type="text"
-                name="rationCardNumber"
-                value={formData.rationCardNumber}
-                onChange={handleInputChange}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-              />
             </div>
           </div>
         </div>
@@ -698,9 +516,11 @@ const ApplicationFormPage = () => {
           </button>
           <button
             type="submit"
-            className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+            disabled={loading || programsLoading}
+            className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
           >
-            {id ? 'Update' : 'Create'} Application
+            <Save className="h-4 w-4 mr-2" />
+            {loading ? 'Saving...' : (id ? 'Update' : 'Create')} Application
           </button>
         </div>
       </form>
