@@ -1,9 +1,10 @@
-// src/stores/applicationStore.ts - Enhanced with all schema fields
+// src/stores/applicationStore.ts - FIXED VERSION
+// Enhanced to handle ALL schema fields properly
 
 import { create } from 'zustand';
 import axios from 'axios';
 
-// Updated Application interface to match backend schema
+// Complete Application interface matching backend schema
 interface Application {
   _id: string;
   applicationNumber: string;
@@ -42,7 +43,7 @@ interface Application {
   caste?: string;
   reservationCategory: 'OC' | 'BC-A' | 'BC-B' | 'BC-C' | 'BC-D' | 'BC-E' | 'SC' | 'ST' | 'EWS' | 'PH';
 
-  // Intermediate details (NEW FIELDS)
+  // Intermediate details - ALL FIELDS
   interBoard?: string;
   interHallTicketNumber?: string;
   sscHallTicketNumber?: string;
@@ -77,7 +78,7 @@ interface Application {
     pincode?: string;
   };
 
-  // Other Info (NEW FIELDS)
+  // Other Info - ALL FIELDS
   identificationMarks?: string[];
   specialReservation?: string;
   isPhysicallyHandicapped: boolean;
@@ -89,7 +90,7 @@ interface Application {
   rationCardNumber?: string;
   oamdcNumber?: string;
 
-  // Study history (NEW FIELD)
+  // Study history
   studyDetails?: Array<{
     className?: string;
     placeOfStudy?: string;
@@ -244,6 +245,74 @@ const defaultFilters: ApplicationFilters = {
   search: ''
 };
 
+// Helper function to clean and prepare data for API calls
+const cleanApplicationData = (data: any) => {
+  console.log('🧹 Cleaning application data:', data);
+  
+  const cleaned = {
+    ...data,
+    // Ensure arrays are properly handled
+    identificationMarks: Array.isArray(data.identificationMarks) 
+      ? data.identificationMarks.filter(mark => mark && mark.trim()) 
+      : [],
+    
+    studyDetails: Array.isArray(data.studyDetails) 
+      ? data.studyDetails.filter(study => 
+          study && (study.className || study.placeOfStudy || study.institutionName)
+        ).map(study => ({
+          className: study.className || '',
+          placeOfStudy: study.placeOfStudy || '',
+          institutionName: study.institutionName || ''
+        }))
+      : [],
+    
+    // Ensure nested objects are properly structured
+    presentAddress: data.presentAddress ? {
+      doorNo: data.presentAddress.doorNo || '',
+      street: data.presentAddress.street || '',
+      village: data.presentAddress.village || '',
+      mandal: data.presentAddress.mandal || '',
+      district: data.presentAddress.district || '',
+      pincode: data.presentAddress.pincode || ''
+    } : {},
+    
+    permanentAddress: data.permanentAddress ? {
+      doorNo: data.permanentAddress.doorNo || '',
+      street: data.permanentAddress.street || '',
+      village: data.permanentAddress.village || '',
+      mandal: data.permanentAddress.mandal || '',
+      district: data.permanentAddress.district || '',
+      pincode: data.permanentAddress.pincode || ''
+    } : {},
+    
+    meesevaDetails: data.meesevaDetails ? {
+      casteCertificate: data.meesevaDetails.casteCertificate || '',
+      incomeCertificate: data.meesevaDetails.incomeCertificate || ''
+    } : {},
+    
+    // Convert string numbers to numbers
+    interPassYear: data.interPassYear ? parseInt(data.interPassYear) : undefined,
+    interMarksSecured: data.interMarksSecured ? parseInt(data.interMarksSecured) : undefined,
+    interMaximumMarks: data.interMaximumMarks ? parseInt(data.interMaximumMarks) : undefined,
+    interLanguagesTotal: data.interLanguagesTotal ? parseInt(data.interLanguagesTotal) : undefined,
+    interLanguagesPercentage: data.interLanguagesPercentage ? parseFloat(data.interLanguagesPercentage) : undefined,
+    interGroupSubjectsPercentage: data.interGroupSubjectsPercentage ? parseFloat(data.interGroupSubjectsPercentage) : undefined,
+    
+    // Ensure boolean fields are properly handled
+    isPhysicallyHandicapped: Boolean(data.isPhysicallyHandicapped),
+  };
+  
+  // Remove undefined values to avoid sending them to the API
+  Object.keys(cleaned).forEach(key => {
+    if (cleaned[key] === undefined) {
+      delete cleaned[key];
+    }
+  });
+  
+  console.log('✨ Cleaned application data:', cleaned);
+  return cleaned;
+};
+
 const useApplicationStore = create<ApplicationState>((set, get) => ({
   applications: [],
   currentApplication: null,
@@ -318,6 +387,7 @@ const useApplicationStore = create<ApplicationState>((set, get) => ({
       
       const { data } = await axios.get(`/api/applications/${id}`);
       console.log(`✅ Application fetched:`, data.applicationNumber);
+      console.log(`📋 Application data:`, JSON.stringify(data, null, 2));
       
       set({ currentApplication: data, loading: false });
       return data;
@@ -334,21 +404,10 @@ const useApplicationStore = create<ApplicationState>((set, get) => ({
   createApplication: async (applicationData) => {
     try {
       set({ loading: true, error: null });
-      console.log('📝 Creating application...');
+      console.log('📝 Creating application with data:', applicationData);
       
-      // Clean the data before sending
-      const cleanedData = {
-        ...applicationData,
-        // Ensure arrays are properly handled
-        identificationMarks: applicationData.identificationMarks?.filter(mark => mark) || [],
-        studyDetails: applicationData.studyDetails?.filter(study => 
-          study.className || study.placeOfStudy || study.institutionName
-        ) || [],
-        // Ensure nested objects are properly structured
-        presentAddress: applicationData.presentAddress || {},
-        permanentAddress: applicationData.permanentAddress || {},
-        meesevaDetails: applicationData.meesevaDetails || {}
-      };
+      const cleanedData = cleanApplicationData(applicationData);
+      console.log('📤 Sending cleaned data to API:', cleanedData);
       
       const { data } = await axios.post('/api/applications', cleanedData);
       console.log(`✅ Application created:`, data.applicationNumber);
@@ -363,6 +422,7 @@ const useApplicationStore = create<ApplicationState>((set, get) => ({
       return data;
     } catch (error: any) {
       console.error('❌ Error creating application:', error);
+      console.error('❌ Error details:', error.response?.data);
       set({ 
         error: error.response?.data?.message || 'Failed to create application', 
         loading: false 
@@ -374,21 +434,10 @@ const useApplicationStore = create<ApplicationState>((set, get) => ({
   updateApplication: async (id, applicationData) => {
     try {
       set({ loading: true, error: null });
-      console.log(`📝 Updating application: ${id}`);
+      console.log(`📝 Updating application: ${id} with data:`, applicationData);
       
-      // Clean the data before sending
-      const cleanedData = {
-        ...applicationData,
-        // Ensure arrays are properly handled
-        identificationMarks: applicationData.identificationMarks?.filter(mark => mark) || [],
-        studyDetails: applicationData.studyDetails?.filter(study => 
-          study.className || study.placeOfStudy || study.institutionName
-        ) || [],
-        // Ensure nested objects are properly structured
-        presentAddress: applicationData.presentAddress || {},
-        permanentAddress: applicationData.permanentAddress || {},
-        meesevaDetails: applicationData.meesevaDetails || {}
-      };
+      const cleanedData = cleanApplicationData(applicationData);
+      console.log('📤 Sending cleaned update data to API:', cleanedData);
       
       const { data } = await axios.put(`/api/applications/${id}`, cleanedData);
       console.log(`✅ Application updated:`, data.applicationNumber);
@@ -407,6 +456,7 @@ const useApplicationStore = create<ApplicationState>((set, get) => ({
       return data;
     } catch (error: any) {
       console.error('❌ Error updating application:', error);
+      console.error('❌ Error details:', error.response?.data);
       set({ 
         error: error.response?.data?.message || 'Failed to update application', 
         loading: false 
@@ -437,6 +487,7 @@ const useApplicationStore = create<ApplicationState>((set, get) => ({
       return data;
     } catch (error: any) {
       console.error('❌ Error submitting application:', error);
+      console.error('❌ Error details:', error.response?.data);
       set({ 
         error: error.response?.data?.message || 'Failed to submit application', 
         submitLoading: null 

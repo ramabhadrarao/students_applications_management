@@ -187,15 +187,18 @@ const getApplicationById = asyncHandler(async (req, res) => {
   res.json(enhancedApplication);
 });
 
-// @desc    Create a new application with enhanced validation
+// @desc    Create a new application with ALL FIELDS support
 // @route   POST /api/applications
 // @access  Private/Student
 const createApplication = asyncHandler(async (req, res) => {
   console.log('📝 Creating new application for user:', req.user._id);
+  console.log('📋 Request body received:', JSON.stringify(req.body, null, 2));
   
   const {
     programId,
     academicYear,
+    
+    // Personal Information - REQUIRED
     studentName,
     fatherName,
     motherName,
@@ -206,24 +209,67 @@ const createApplication = asyncHandler(async (req, res) => {
     parentMobile,
     guardianMobile,
     email,
-    presentAddress,
-    permanentAddress,
     religion,
     caste,
     reservationCategory,
     isPhysicallyHandicapped,
-    sadaramNumber,
-    identificationMarks,
     specialReservation,
+    
+    // Intermediate Details - ALL FIELDS
+    interBoard,
+    interHallTicketNumber,
+    sscHallTicketNumber,
+    interPassYear,
+    interPassoutType,
+    bridgeCourse,
+    interCourseName,
+    interMedium,
+    interSecondLanguage,
+    interMarksSecured,
+    interMaximumMarks,
+    interLanguagesTotal,
+    interLanguagesPercentage,
+    interGroupSubjectsPercentage,
+    interCollegeName,
+    
+    // Address Information
+    presentAddress,
+    permanentAddress,
+    
+    // Additional Information
+    identificationMarks,
+    sadaramNumber,
     meesevaDetails,
     rationCardNumber,
+    oamdcNumber,
+    
+    // Study Details
+    studyDetails,
   } = req.body;
 
   // Validate required fields
-  if (!programId || !academicYear || !studentName || !fatherName || !motherName || 
-      !dateOfBirth || !gender || !mobileNumber || !email) {
+  const requiredFields = {
+    programId: 'Program is required',
+    academicYear: 'Academic year is required',
+    studentName: 'Student name is required',
+    fatherName: 'Father name is required',
+    motherName: 'Mother name is required',
+    dateOfBirth: 'Date of birth is required',
+    gender: 'Gender is required',
+    mobileNumber: 'Mobile number is required',
+    email: 'Email is required'
+  };
+
+  const missingFields = [];
+  for (const [field, message] of Object.entries(requiredFields)) {
+    if (!req.body[field]) {
+      missingFields.push(message);
+    }
+  }
+
+  if (missingFields.length > 0) {
     res.status(400);
-    throw new Error('Missing required fields for application creation');
+    throw new Error(`Missing required fields: ${missingFields.join(', ')}`);
   }
 
   // Check if user already has an application for this program and academic year
@@ -246,34 +292,93 @@ const createApplication = asyncHandler(async (req, res) => {
   console.log('🔢 Generated application number:', applicationNumber);
 
   try {
-    const application = await Application.create({
+    // Prepare the complete application data with ALL fields
+    const applicationData = {
       applicationNumber,
       userId: req.user._id,
       programId,
       academicYear,
       status: 'draft',
+      
+      // Personal Information
       studentName,
       fatherName,
       motherName,
-      dateOfBirth,
+      dateOfBirth: new Date(dateOfBirth),
       gender,
-      aadharNumber,
+      aadharNumber: aadharNumber || '',
       mobileNumber,
-      parentMobile,
-      guardianMobile,
+      parentMobile: parentMobile || '',
+      guardianMobile: guardianMobile || '',
       email,
-      presentAddress,
-      permanentAddress,
-      religion,
-      caste,
-      reservationCategory,
-      isPhysicallyHandicapped,
-      sadaramNumber,
-      identificationMarks,
-      specialReservation,
-      meesevaDetails,
-      rationCardNumber,
-    });
+      religion: religion || '',
+      caste: caste || '',
+      reservationCategory: reservationCategory || 'OC',
+      isPhysicallyHandicapped: Boolean(isPhysicallyHandicapped),
+      specialReservation: specialReservation || '',
+      
+      // Intermediate Details - Handle ALL fields
+      interBoard: interBoard || '',
+      interHallTicketNumber: interHallTicketNumber || '',
+      sscHallTicketNumber: sscHallTicketNumber || '',
+      interPassYear: interPassYear ? parseInt(interPassYear) : undefined,
+      interPassoutType: interPassoutType || '',
+      bridgeCourse: bridgeCourse || '',
+      interCourseName: interCourseName || '',
+      interMedium: interMedium || '',
+      interSecondLanguage: interSecondLanguage || '',
+      interMarksSecured: interMarksSecured ? parseInt(interMarksSecured) : undefined,
+      interMaximumMarks: interMaximumMarks ? parseInt(interMaximumMarks) : undefined,
+      interLanguagesTotal: interLanguagesTotal ? parseInt(interLanguagesTotal) : undefined,
+      interLanguagesPercentage: interLanguagesPercentage ? parseFloat(interLanguagesPercentage) : undefined,
+      interGroupSubjectsPercentage: interGroupSubjectsPercentage ? parseFloat(interGroupSubjectsPercentage) : undefined,
+      interCollegeName: interCollegeName || '',
+      
+      // Address Information - Ensure proper structure
+      presentAddress: {
+        doorNo: presentAddress?.doorNo || '',
+        street: presentAddress?.street || '',
+        village: presentAddress?.village || '',
+        mandal: presentAddress?.mandal || '',
+        district: presentAddress?.district || '',
+        pincode: presentAddress?.pincode || ''
+      },
+      permanentAddress: {
+        doorNo: permanentAddress?.doorNo || '',
+        street: permanentAddress?.street || '',
+        village: permanentAddress?.village || '',
+        mandal: permanentAddress?.mandal || '',
+        district: permanentAddress?.district || '',
+        pincode: permanentAddress?.pincode || ''
+      },
+      
+      // Additional Information
+      identificationMarks: Array.isArray(identificationMarks) 
+        ? identificationMarks.filter(mark => mark && mark.trim()) 
+        : [],
+      sadaramNumber: sadaramNumber || '',
+      meesevaDetails: {
+        casteCertificate: meesevaDetails?.casteCertificate || '',
+        incomeCertificate: meesevaDetails?.incomeCertificate || ''
+      },
+      rationCardNumber: rationCardNumber || '',
+      oamdcNumber: oamdcNumber || '',
+      
+      // Study Details - Handle array properly
+      studyDetails: Array.isArray(studyDetails) 
+        ? studyDetails.filter(study => 
+            study && (study.className || study.placeOfStudy || study.institutionName)
+          ).map(study => ({
+            className: study.className || '',
+            placeOfStudy: study.placeOfStudy || '',
+            institutionName: study.institutionName || ''
+          }))
+        : []
+    };
+
+    console.log('💾 Creating application with data:', JSON.stringify(applicationData, null, 2));
+
+    const application = await Application.create(applicationData);
 
     // Create status history record
     await ApplicationStatusHistory.create({
@@ -302,16 +407,25 @@ const createApplication = asyncHandler(async (req, res) => {
     res.status(201).json(populatedApplication);
   } catch (error) {
     console.error('❌ Error creating application:', error);
+    
+    // Check if it's a validation error
+    if (error.name === 'ValidationError') {
+      const validationErrors = Object.values(error.errors).map(err => err.message);
+      res.status(400);
+      throw new Error(`Validation failed: ${validationErrors.join(', ')}`);
+    }
+    
     res.status(400);
     throw new Error('Failed to create application: ' + error.message);
   }
 });
 
-// @desc    Update application with enhanced validation
+// @desc    Update application with ALL FIELDS support
 // @route   PUT /api/applications/:id
 // @access  Private
 const updateApplication = asyncHandler(async (req, res) => {
   console.log(`📝 Updating application: ${req.params.id} by user: ${req.user._id} (${req.user.role})`);
+  console.log('📋 Update data received:', JSON.stringify(req.body, null, 2));
   
   const application = await Application.findById(req.params.id);
 
@@ -346,29 +460,114 @@ const updateApplication = asyncHandler(async (req, res) => {
         throw new Error('Application can only be updated in draft or rejected status');
       }
       
-      // Update basic fields (prevent changing critical fields)
+      // Update ALL allowed fields for students
       const allowedFields = [
+        // Personal Information
         'studentName', 'fatherName', 'motherName', 'dateOfBirth', 'gender',
         'aadharNumber', 'mobileNumber', 'parentMobile', 'guardianMobile', 'email',
-        'presentAddress', 'permanentAddress', 'religion', 'caste', 'reservationCategory',
-        'isPhysicallyHandicapped', 'sadaramNumber', 'identificationMarks',
-        'specialReservation', 'meesevaDetails', 'rationCardNumber'
+        'religion', 'caste', 'reservationCategory', 'isPhysicallyHandicapped', 'specialReservation',
+        
+        // Intermediate Details
+        'interBoard', 'interHallTicketNumber', 'sscHallTicketNumber', 'interPassYear',
+        'interPassoutType', 'bridgeCourse', 'interCourseName', 'interMedium', 'interSecondLanguage',
+        'interMarksSecured', 'interMaximumMarks', 'interLanguagesTotal', 'interLanguagesPercentage',
+        'interGroupSubjectsPercentage', 'interCollegeName',
+        
+        // Address and other info
+        'presentAddress', 'permanentAddress', 'identificationMarks', 'sadaramNumber',
+        'meesevaDetails', 'rationCardNumber', 'oamdcNumber', 'studyDetails'
       ];
       
       allowedFields.forEach(field => {
         if (req.body[field] !== undefined) {
-          application[field] = req.body[field];
+          if (field === 'dateOfBirth' && req.body[field]) {
+            application[field] = new Date(req.body[field]);
+          } else if (field === 'isPhysicallyHandicapped') {
+            application[field] = Boolean(req.body[field]);
+          } else if (field === 'identificationMarks') {
+            application[field] = Array.isArray(req.body[field]) 
+              ? req.body[field].filter(mark => mark && mark.trim()) 
+              : [];
+          } else if (field === 'studyDetails') {
+            application[field] = Array.isArray(req.body[field]) 
+              ? req.body[field].filter(study => 
+                  study && (study.className || study.placeOfStudy || study.institutionName)
+                ).map(study => ({
+                  className: study.className || '',
+                  placeOfStudy: study.placeOfStudy || '',
+                  institutionName: study.institutionName || ''
+                }))
+              : [];
+          } else if (field === 'presentAddress' || field === 'permanentAddress') {
+            application[field] = {
+              doorNo: req.body[field]?.doorNo || '',
+              street: req.body[field]?.street || '',
+              village: req.body[field]?.village || '',
+              mandal: req.body[field]?.mandal || '',
+              district: req.body[field]?.district || '',
+              pincode: req.body[field]?.pincode || ''
+            };
+          } else if (field === 'meesevaDetails') {
+            application[field] = {
+              casteCertificate: req.body[field]?.casteCertificate || '',
+              incomeCertificate: req.body[field]?.incomeCertificate || ''
+            };
+          } else if (['interPassYear', 'interMarksSecured', 'interMaximumMarks', 'interLanguagesTotal'].includes(field)) {
+            application[field] = req.body[field] ? parseInt(req.body[field]) : undefined;
+          } else if (['interLanguagesPercentage', 'interGroupSubjectsPercentage'].includes(field)) {
+            application[field] = req.body[field] ? parseFloat(req.body[field]) : undefined;
+          } else {
+            application[field] = req.body[field];
+          }
         }
       });
       
-      console.log('👨‍🎓 Student update - basic fields only');
+      console.log('👨‍🎓 Student update - all allowed fields processed');
       
     } else {
       // Admins and program admins can update more fields
       Object.keys(req.body).forEach(key => {
         // Prevent changing certain system fields
         if (!['applicationNumber', 'userId', 'dateCreated'].includes(key)) {
-          application[key] = req.body[key];
+          if (key === 'dateOfBirth' && req.body[key]) {
+            application[key] = new Date(req.body[key]);
+          } else if (key === 'isPhysicallyHandicapped') {
+            application[key] = Boolean(req.body[key]);
+          } else if (key === 'identificationMarks') {
+            application[key] = Array.isArray(req.body[key]) 
+              ? req.body[key].filter(mark => mark && mark.trim()) 
+              : [];
+          } else if (key === 'studyDetails') {
+            application[key] = Array.isArray(req.body[key]) 
+              ? req.body[key].filter(study => 
+                  study && (study.className || study.placeOfStudy || study.institutionName)
+                ).map(study => ({
+                  className: study.className || '',
+                  placeOfStudy: study.placeOfStudy || '',
+                  institutionName: study.institutionName || ''
+                }))
+              : [];
+          } else if (key === 'presentAddress' || key === 'permanentAddress') {
+            application[key] = {
+              doorNo: req.body[key]?.doorNo || '',
+              street: req.body[key]?.street || '',
+              village: req.body[key]?.village || '',
+              mandal: req.body[key]?.mandal || '',
+              district: req.body[key]?.district || '',
+              pincode: req.body[key]?.pincode || ''
+            };
+          } else if (key === 'meesevaDetails') {
+            application[key] = {
+              casteCertificate: req.body[key]?.casteCertificate || '',
+              incomeCertificate: req.body[key]?.incomeCertificate || ''
+            };
+          } else if (['interPassYear', 'interMarksSecured', 'interMaximumMarks', 'interLanguagesTotal'].includes(key)) {
+            application[key] = req.body[key] ? parseInt(req.body[key]) : undefined;
+          } else if (['interLanguagesPercentage', 'interGroupSubjectsPercentage'].includes(key)) {
+            application[key] = req.body[key] ? parseFloat(req.body[key]) : undefined;
+          } else {
+            application[key] = req.body[key];
+          }
         }
       });
       
@@ -416,6 +615,8 @@ const updateApplication = asyncHandler(async (req, res) => {
     
     application.dateUpdated = Date.now();
     
+    console.log('💾 Saving application with updated data:', JSON.stringify(application.toObject(), null, 2));
+    
     const updatedApplication = await application.save();
     
     // Populate the response
@@ -429,6 +630,14 @@ const updateApplication = asyncHandler(async (req, res) => {
     
   } catch (error) {
     console.error('❌ Error updating application:', error);
+    
+    // Check if it's a validation error
+    if (error.name === 'ValidationError') {
+      const validationErrors = Object.values(error.errors).map(err => err.message);
+      res.status(400);
+      throw new Error(`Validation failed: ${validationErrors.join(', ')}`);
+    }
+    
     res.status(400);
     throw new Error('Failed to update application: ' + error.message);
   }

@@ -1,4 +1,5 @@
-// src/pages/ApplicationFormPage.tsx - Enhanced with all schema fields
+// src/pages/ApplicationFormPage.tsx - FIXED VERSION
+// Enhanced to handle ALL schema fields properly
 
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
@@ -41,27 +42,23 @@ const ApplicationFormPage = () => {
     caste: '',
     reservationCategory: 'OC',
     isPhysicallyHandicapped: false,
-    sadaramNumber: '',
-    identificationMarks: ['', ''],
     specialReservation: '',
-    rationCardNumber: '',
-    oamdcNumber: '',
     
-    // Intermediate Details
+    // Intermediate Details - ALL FIELDS
     interBoard: '',
     interHallTicketNumber: '',
     sscHallTicketNumber: '',
-    interPassYear: undefined,
+    interPassYear: '',
     interPassoutType: '',
     bridgeCourse: '',
     interCourseName: '',
     interMedium: '',
     interSecondLanguage: '',
-    interMarksSecured: undefined,
-    interMaximumMarks: undefined,
-    interLanguagesTotal: undefined,
-    interLanguagesPercentage: undefined,
-    interGroupSubjectsPercentage: undefined,
+    interMarksSecured: '',
+    interMaximumMarks: '',
+    interLanguagesTotal: '',
+    interLanguagesPercentage: '',
+    interGroupSubjectsPercentage: '',
     interCollegeName: '',
     
     // Address
@@ -82,6 +79,12 @@ const ApplicationFormPage = () => {
       pincode: ''
     },
     
+    // Additional Information
+    identificationMarks: ['', ''],
+    sadaramNumber: '',
+    rationCardNumber: '',
+    oamdcNumber: '',
+    
     // Study Details (last 7 years)
     studyDetails: [
       { className: '', placeOfStudy: '', institutionName: '' }
@@ -95,39 +98,112 @@ const ApplicationFormPage = () => {
   });
 
   const [sameAddress, setSameAddress] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    console.log('Fetching programs...');
-    fetchPrograms().then(() => {
-      console.log('Programs fetch completed');
-    }).catch((err) => {
-      console.error('Error fetching programs:', err);
-    });
+    console.log('🚀 ApplicationFormPage mounted');
+    fetchPrograms();
     
     // If editing, fetch application data
     if (id) {
-      console.log('Fetching application by ID:', id);
-      fetchApplicationById(id).then(application => {
-        if (application) {
-          setFormData({
-            ...application,
-            dateOfBirth: new Date(application.dateOfBirth).toISOString().split('T')[0],
-            identificationMarks: application.identificationMarks || ['', ''],
-            studyDetails: application.studyDetails && application.studyDetails.length > 0 
-              ? application.studyDetails 
-              : [{ className: '', placeOfStudy: '', institutionName: '' }],
-            meesevaDetails: application.meesevaDetails || { casteCertificate: '', incomeCertificate: '' }
-          });
+      console.log('📝 Editing mode - fetching application:', id);
+      fetchApplicationById(id);
+    }
+  }, [id]);
+
+  // Update form data when currentApplication changes
+  useEffect(() => {
+    if (currentApplication && id) {
+      console.log('📋 Populating form with application data:', currentApplication);
+      
+      setFormData({
+        programId: typeof currentApplication.programId === 'string' 
+          ? currentApplication.programId 
+          : currentApplication.programId._id,
+        academicYear: currentApplication.academicYear,
+        
+        // Personal Information
+        studentName: currentApplication.studentName || '',
+        fatherName: currentApplication.fatherName || '',
+        motherName: currentApplication.motherName || '',
+        dateOfBirth: currentApplication.dateOfBirth 
+          ? new Date(currentApplication.dateOfBirth).toISOString().split('T')[0] 
+          : '',
+        gender: currentApplication.gender || '',
+        aadharNumber: currentApplication.aadharNumber || '',
+        mobileNumber: currentApplication.mobileNumber || '',
+        parentMobile: currentApplication.parentMobile || '',
+        guardianMobile: currentApplication.guardianMobile || '',
+        email: currentApplication.email || '',
+        religion: currentApplication.religion || '',
+        caste: currentApplication.caste || '',
+        reservationCategory: currentApplication.reservationCategory || 'OC',
+        isPhysicallyHandicapped: Boolean(currentApplication.isPhysicallyHandicapped),
+        specialReservation: currentApplication.specialReservation || '',
+        
+        // Intermediate Details
+        interBoard: currentApplication.interBoard || '',
+        interHallTicketNumber: currentApplication.interHallTicketNumber || '',
+        sscHallTicketNumber: currentApplication.sscHallTicketNumber || '',
+        interPassYear: currentApplication.interPassYear ? currentApplication.interPassYear.toString() : '',
+        interPassoutType: currentApplication.interPassoutType || '',
+        bridgeCourse: currentApplication.bridgeCourse || '',
+        interCourseName: currentApplication.interCourseName || '',
+        interMedium: currentApplication.interMedium || '',
+        interSecondLanguage: currentApplication.interSecondLanguage || '',
+        interMarksSecured: currentApplication.interMarksSecured ? currentApplication.interMarksSecured.toString() : '',
+        interMaximumMarks: currentApplication.interMaximumMarks ? currentApplication.interMaximumMarks.toString() : '',
+        interLanguagesTotal: currentApplication.interLanguagesTotal ? currentApplication.interLanguagesTotal.toString() : '',
+        interLanguagesPercentage: currentApplication.interLanguagesPercentage ? currentApplication.interLanguagesPercentage.toString() : '',
+        interGroupSubjectsPercentage: currentApplication.interGroupSubjectsPercentage ? currentApplication.interGroupSubjectsPercentage.toString() : '',
+        interCollegeName: currentApplication.interCollegeName || '',
+        
+        // Address
+        presentAddress: {
+          doorNo: currentApplication.presentAddress?.doorNo || '',
+          street: currentApplication.presentAddress?.street || '',
+          village: currentApplication.presentAddress?.village || '',
+          mandal: currentApplication.presentAddress?.mandal || '',
+          district: currentApplication.presentAddress?.district || '',
+          pincode: currentApplication.presentAddress?.pincode || ''
+        },
+        permanentAddress: {
+          doorNo: currentApplication.permanentAddress?.doorNo || '',
+          street: currentApplication.permanentAddress?.street || '',
+          village: currentApplication.permanentAddress?.village || '',
+          mandal: currentApplication.permanentAddress?.mandal || '',
+          district: currentApplication.permanentAddress?.district || '',
+          pincode: currentApplication.permanentAddress?.pincode || ''
+        },
+        
+        // Additional Information
+        identificationMarks: currentApplication.identificationMarks && currentApplication.identificationMarks.length > 0 
+          ? [...currentApplication.identificationMarks, '', ''].slice(0, 2) // Ensure we have exactly 2 slots
+          : ['', ''],
+        sadaramNumber: currentApplication.sadaramNumber || '',
+        rationCardNumber: currentApplication.rationCardNumber || '',
+        oamdcNumber: currentApplication.oamdcNumber || '',
+        
+        // Study Details
+        studyDetails: currentApplication.studyDetails && currentApplication.studyDetails.length > 0 
+          ? currentApplication.studyDetails 
+          : [{ className: '', placeOfStudy: '', institutionName: '' }],
+        
+        // Meeseva Details
+        meesevaDetails: {
+          casteCertificate: currentApplication.meesevaDetails?.casteCertificate || '',
+          incomeCertificate: currentApplication.meesevaDetails?.incomeCertificate || ''
         }
-      }).catch((err) => {
-        console.error('Error fetching application:', err);
       });
     }
-  }, [id, fetchPrograms, fetchApplicationById]);
+  }, [currentApplication, id]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target;
     const checked = (e.target as HTMLInputElement).checked;
+    
+    console.log(`📝 Input change: ${name} = ${type === 'checkbox' ? checked : value}`);
     
     if (name.includes('.')) {
       const [parent, child] = name.split('.');
@@ -135,14 +211,13 @@ const ApplicationFormPage = () => {
         ...prev,
         [parent]: {
           ...prev[parent as keyof typeof prev] as any,
-          [child]: type === 'number' ? (value ? Number(value) : undefined) : value
+          [child]: value
         }
       }));
     } else {
       setFormData(prev => ({
         ...prev,
-        [name]: type === 'checkbox' ? checked : 
-                type === 'number' ? (value ? Number(value) : undefined) : value
+        [name]: type === 'checkbox' ? checked : value
       }));
     }
   };
@@ -183,29 +258,98 @@ const ApplicationFormPage = () => {
     setSameAddress(true);
   };
 
+  const validateForm = () => {
+    const requiredFields = [
+      'programId', 'academicYear', 'studentName', 'fatherName', 'motherName',
+      'dateOfBirth', 'gender', 'mobileNumber', 'email'
+    ];
+    
+    const missingFields = requiredFields.filter(field => !formData[field as keyof typeof formData]);
+    
+    if (missingFields.length > 0) {
+      alert(`Please fill in the following required fields: ${missingFields.join(', ')}`);
+      return false;
+    }
+    
+    return true;
+  };
+
+  const prepareFormDataForSubmission = () => {
+    console.log('📤 Preparing form data for submission...');
+    
+    const submissionData = {
+      ...formData,
+      // Convert string numbers to actual numbers where needed
+      interPassYear: formData.interPassYear ? parseInt(formData.interPassYear) : undefined,
+      interMarksSecured: formData.interMarksSecured ? parseInt(formData.interMarksSecured) : undefined,
+      interMaximumMarks: formData.interMaximumMarks ? parseInt(formData.interMaximumMarks) : undefined,
+      interLanguagesTotal: formData.interLanguagesTotal ? parseInt(formData.interLanguagesTotal) : undefined,
+      interLanguagesPercentage: formData.interLanguagesPercentage ? parseFloat(formData.interLanguagesPercentage) : undefined,
+      interGroupSubjectsPercentage: formData.interGroupSubjectsPercentage ? parseFloat(formData.interGroupSubjectsPercentage) : undefined,
+      
+      // Filter out empty identification marks
+      identificationMarks: formData.identificationMarks.filter(mark => mark && mark.trim()),
+      
+      // Filter out empty study details
+      studyDetails: formData.studyDetails.filter(study => 
+        study.className || study.placeOfStudy || study.institutionName
+      )
+    };
+    
+    console.log('📋 Submission data prepared:', JSON.stringify(submissionData, null, 2));
+    return submissionData;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
+    if (!validateForm()) {
+      return;
+    }
+    
     try {
+      setSaving(true);
+      const submissionData = prepareFormDataForSubmission();
+      
       if (id) {
-        await updateApplication(id, formData);
+        console.log('📝 Updating existing application...');
+        await updateApplication(id, submissionData);
       } else {
-        await createApplication(formData);
+        console.log('📝 Creating new application...');
+        await createApplication(submissionData);
       }
+      
       navigate('/applications');
     } catch (err) {
-      console.error('Failed to save application:', err);
+      console.error('❌ Failed to save application:', err);
+      alert('Failed to save application. Please check the form and try again.');
+    } finally {
+      setSaving(false);
     }
   };
 
   const handleSubmitApplication = async () => {
     if (!id) return;
     
+    if (!validateForm()) {
+      return;
+    }
+    
     try {
+      setSubmitting(true);
+      
+      // First update with current form data
+      const submissionData = prepareFormDataForSubmission();
+      await updateApplication(id, submissionData);
+      
+      // Then submit the application
       await submitApplication(id);
       navigate('/applications');
     } catch (err) {
-      console.error('Failed to submit application:', err);
+      console.error('❌ Failed to submit application:', err);
+      alert('Failed to submit application. Please check the form and try again.');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -235,19 +379,21 @@ const ApplicationFormPage = () => {
           <button
             type="button"
             onClick={handleSubmit}
-            className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+            disabled={saving || submitting}
+            className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
           >
             <Save className="h-4 w-4 mr-2" />
-            Save Draft
+            {saving ? 'Saving...' : 'Save Draft'}
           </button>
           {id && currentApplication?.status === 'draft' && (
             <button
               type="button"
               onClick={handleSubmitApplication}
-              className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              disabled={saving || submitting}
+              className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
             >
               <Send className="h-4 w-4 mr-2" />
-              Submit Application
+              {submitting ? 'Submitting...' : 'Submit Application'}
             </button>
           )}
         </div>
@@ -504,7 +650,7 @@ const ApplicationFormPage = () => {
               <input
                 type="number"
                 name="interPassYear"
-                value={formData.interPassYear || ''}
+                value={formData.interPassYear}
                 onChange={handleInputChange}
                 min="2000"
                 max="2030"
@@ -565,7 +711,7 @@ const ApplicationFormPage = () => {
               <input
                 type="number"
                 name="interMarksSecured"
-                value={formData.interMarksSecured || ''}
+                value={formData.interMarksSecured}
                 onChange={handleInputChange}
                 min="0"
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
@@ -577,7 +723,7 @@ const ApplicationFormPage = () => {
               <input
                 type="number"
                 name="interMaximumMarks"
-                value={formData.interMaximumMarks || ''}
+                value={formData.interMaximumMarks}
                 onChange={handleInputChange}
                 min="0"
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
@@ -585,11 +731,23 @@ const ApplicationFormPage = () => {
               />
             </div>
             <div>
+              <label className="block text-sm font-medium text-gray-700">Languages Total</label>
+              <input
+                type="number"
+                name="interLanguagesTotal"
+                value={formData.interLanguagesTotal}
+                onChange={handleInputChange}
+                min="0"
+                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                placeholder="Total languages marks"
+              />
+            </div>
+            <div>
               <label className="block text-sm font-medium text-gray-700">Languages Percentage</label>
               <input
                 type="number"
                 name="interLanguagesPercentage"
-                value={formData.interLanguagesPercentage || ''}
+                value={formData.interLanguagesPercentage}
                 onChange={handleInputChange}
                 min="0"
                 max="100"
@@ -603,7 +761,7 @@ const ApplicationFormPage = () => {
               <input
                 type="number"
                 name="interGroupSubjectsPercentage"
-                value={formData.interGroupSubjectsPercentage || ''}
+                value={formData.interGroupSubjectsPercentage}
                 onChange={handleInputChange}
                 min="0"
                 max="100"
@@ -1019,11 +1177,11 @@ const ApplicationFormPage = () => {
           </button>
           <button
             type="submit"
-            disabled={loading || programsLoading}
+            disabled={saving || submitting || programsLoading}
             className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
           >
             <Save className="h-4 w-4 mr-2" />
-            {loading ? 'Saving...' : (id ? 'Update' : 'Create')} Application
+            {saving ? 'Saving...' : (id ? 'Update' : 'Create')} Application
           </button>
         </div>
       </form>
