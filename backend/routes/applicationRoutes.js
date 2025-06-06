@@ -1,5 +1,4 @@
-// File: backend/routes/applicationRoutes.js
-// Purpose: Enhanced application routes with bulk operations and improved endpoints
+// backend/routes/applicationRoutes.js - UPDATED WITH DELETE ROUTES
 
 import express from 'express';
 import {
@@ -8,6 +7,8 @@ import {
   createApplication,
   updateApplication,
   submitApplication,
+  deleteApplication,           // NEW
+  bulkDeleteApplications,      // NEW
   getApplicationHistory,
   getApplicationStatistics,
   bulkUpdateApplications,
@@ -26,9 +27,10 @@ router.use('/:applicationId/documents', applicationDocumentRoutes);
 router.route('/statistics')
   .get(protect, admin, getApplicationStatistics);
 
-// Bulk operations route (must be before /:id route)
+// Bulk operations routes (must be before /:id route)
 router.route('/bulk')
-  .put(protect, programAdmin, bulkUpdateApplications);
+  .put(protect, programAdmin, bulkUpdateApplications)
+  .delete(protect, admin, bulkDeleteApplications);    // NEW - Bulk delete
 
 // Main applications routes
 router.route('/')
@@ -38,7 +40,8 @@ router.route('/')
 // Individual application routes
 router.route('/:id')
   .get(protect, getApplicationById)     // Get single application
-  .put(protect, updateApplication);     // Update application
+  .put(protect, updateApplication)      // Update application
+  .delete(protect, deleteApplication);  // NEW - Delete application
 
 // Application-specific actions
 router.route('/:id/submit')

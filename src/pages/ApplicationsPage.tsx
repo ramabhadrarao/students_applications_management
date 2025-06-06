@@ -1,4 +1,4 @@
-// src/pages/ApplicationsPage.tsx - Enhanced with full field support and improved UI
+// src/pages/ApplicationsPage.tsx - FIXED VERSION WITH EDIT/DELETE
 
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -14,6 +14,7 @@ import {
   CheckCircle,
   XCircle,
   AlertCircle,
+  AlertTriangle,    // ADDED - This was missing
   User,
   BookOpen,
   Send,
@@ -28,7 +29,10 @@ import {
   Phone,
   Mail,
   MapPin,
-  Star
+  Star,
+  Trash2,
+  CheckSquare,
+  Square
 } from 'lucide-react';
 import useApplicationStore from '../stores/applicationStore';
 import useAuthStore from '../stores/authStore';
@@ -42,7 +46,13 @@ const ApplicationsPage = () => {
     loading, 
     error, 
     fetchApplications,
-    submitApplication 
+    submitApplication,
+    deleteApplication,
+    bulkUpdateApplications,
+    bulkDeleteApplications,
+    deleteLoading,
+    bulkLoading,
+    bulkDeleteLoading
   } = useApplicationStore();
   
   const { programs, fetchPrograms } = useProgramStore();
@@ -62,7 +72,17 @@ const ApplicationsPage = () => {
   const [showFilters, setShowFilters] = useState(false);
   const [selectedApplications, setSelectedApplications] = useState<string[]>([]);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
-  const [expandedCard, setExpandedCard] = useState<string | null>(null);
+  
+  // Modal states
+  const [showDeleteModal, setShowDeleteModal] = useState<string | null>(null);
+  const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false);
+  const [showBulkUpdateModal, setShowBulkUpdateModal] = useState(false);
+  
+  // Bulk update form
+  const [bulkUpdateData, setBulkUpdateData] = useState({
+    status: '',
+    academicYear: ''
+  });
 
   useEffect(() => {
     fetchApplications(filters);
@@ -76,7 +96,7 @@ const ApplicationsPage = () => {
     setFilters(prev => ({
       ...prev,
       [name]: value,
-      page: 1 // Reset page when filters change
+      page: 1
     }));
   };
 
@@ -116,7 +136,6 @@ const ApplicationsPage = () => {
     try {
       setActionLoading(applicationId);
       await submitApplication(applicationId);
-      // Refresh the list
       fetchApplications(filters);
     } catch (err) {
       console.error('Failed to submit application:', err);
@@ -124,6 +143,82 @@ const ApplicationsPage = () => {
       setActionLoading(null);
     }
   };
+
+  // Individual delete handler
+  const handleDeleteApplication = async (applicationId: string) => {
+    try {
+      await deleteApplication(applicationId);
+      setShowDeleteModal(null);
+      fetchApplications(filters);
+      setSelectedApplications([]);
+    } catch (err) {
+      console.error('Failed to delete application:', err);
+    }
+  };
+
+  // Bulk operations handlers
+  const handleBulkUpdate = async () => {
+    if (selectedApplications.length === 0) return;
+    
+    try {
+      const updates = Object.entries(bulkUpdateData)
+        .filter(([_, value]) => value && value.trim())
+        .reduce((acc, [key, value]) => ({ ...acc, [key]: value }), {});
+      
+      if (Object.keys(updates).length === 0) {
+        alert('Please select at least one field to update.');
+        return;
+      }
+      
+      await bulkUpdateApplications({
+        applicationIds: selectedApplications,
+        updates
+      });
+      
+      setShowBulkUpdateModal(false);
+      setBulkUpdateData({ status: '', academicYear: '' });
+      setSelectedApplications([]);
+      fetchApplications(filters);
+    } catch (error) {
+      console.error('Bulk update failed:', error);
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedApplications.length === 0) return;
+    
+    try {
+      await bulkDeleteApplications(selectedApplications);
+      setShowBulkDeleteModal(false);
+      setSelectedApplications([]);
+      fetchApplications(filters);
+    } catch (error) {
+      console.error('Bulk delete failed:', error);
+    }
+  };
+
+  // Permission checks
+  const canEdit = (application: any) => {
+    return user?.role === 'student' && 
+           application.userId === user._id && 
+           ['draft', 'rejected'].includes(application.status);
+  };
+
+  const canSubmit = (application: any) => {
+    return user?.role === 'student' && 
+           application.userId === user._id && 
+           application.status === 'draft';
+  };
+
+  const canDelete = (application: any) => {
+    return (user?.role === 'admin') ||
+           (user?.role === 'student' && 
+            application.userId === user._id && 
+            application.status === 'draft');
+  };
+
+  const canBulkEdit = user?.role === 'admin' || user?.role === 'program_admin';
+  const canBulkDelete = user?.role === 'admin';
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -149,18 +244,6 @@ const ApplicationsPage = () => {
     }
   };
 
-  const canEdit = (application: any) => {
-    return user?.role === 'student' && 
-           application.userId === user._id && 
-           ['draft', 'rejected'].includes(application.status);
-  };
-
-  const canSubmit = (application: any) => {
-    return user?.role === 'student' && 
-           application.userId === user._id && 
-           application.status === 'draft';
-  };
-
   const getQuickStats = () => {
     const stats = {
       total: applications.length,
@@ -179,19 +262,6 @@ const ApplicationsPage = () => {
       return `${phone.slice(0, 3)}-${phone.slice(3, 6)}-${phone.slice(6)}`;
     }
     return phone;
-  };
-
-  const getAddressString = (address: any) => {
-    if (!address) return '';
-    const parts = [
-      address.doorNo,
-      address.street,
-      address.village,
-      address.mandal,
-      address.district,
-      address.pincode
-    ].filter(part => part);
-    return parts.join(', ');
   };
 
   const stats = getQuickStats();
@@ -343,47 +413,65 @@ const ApplicationsPage = () => {
               </select>
             </div>
           </div>
+        </div>
+      )}
 
-          <div className="mt-4 flex items-center justify-between">
+      {/* Bulk Actions Bar */}
+      {applications.length > 0 && (canBulkEdit || canBulkDelete) && (
+        <div className="bg-white border-b border-gray-200 px-4 py-3 rounded-lg shadow">
+          <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
-              <span className="text-sm text-gray-500">Sort by:</span>
-              {[
-                { field: 'dateCreated', label: 'Date Created' },
-                { field: 'status', label: 'Status' },
-                { field: 'studentName', label: 'Student Name' },
-                { field: 'submittedAt', label: 'Submitted Date' }
-              ].map((sort) => (
-                <button
-                  key={sort.field}
-                  onClick={() => handleSort(sort.field)}
-                  className={`text-sm px-3 py-1 rounded-md border ${
-                    filters.sortField === sort.field 
-                      ? 'bg-blue-100 text-blue-800 border-blue-200' 
-                      : 'bg-white text-gray-700 border-gray-300'
-                  }`}
-                >
-                  {sort.label} {filters.sortField === sort.field && (
-                    <ArrowUpDown className="inline h-3 w-3 ml-1" />
-                  )}
-                </button>
-              ))}
-            </div>
-
-            <div className="flex items-center space-x-3">
-              <span className="text-sm text-gray-500">Show:</span>
-              <select
-                name="limit"
-                value={filters.limit}
-                onChange={handleFilterChange}
-                className="text-sm rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+              <button
+                onClick={handleSelectAll}
+                className="flex items-center text-sm text-gray-600 hover:text-gray-900"
               >
-                <option value="10">10</option>
-                <option value="25">25</option>
-                <option value="50">50</option>
-                <option value="100">100</option>
-              </select>
-              <span className="text-sm text-gray-500">per page</span>
+                {selectedApplications.length === applications.length ? (
+                  <CheckSquare className="h-4 w-4 mr-2" />
+                ) : (
+                  <Square className="h-4 w-4 mr-2" />
+                )}
+                Select All ({applications.length})
+              </button>
+              
+              {selectedApplications.length > 0 && (
+                <span className="text-sm text-gray-500">
+                  {selectedApplications.length} selected
+                </span>
+              )}
             </div>
+            
+            {selectedApplications.length > 0 && (
+              <div className="flex items-center space-x-3">
+                {canBulkEdit && (
+                  <button
+                    onClick={() => setShowBulkUpdateModal(true)}
+                    disabled={bulkLoading}
+                    className="inline-flex items-center px-3 py-1 border border-blue-300 shadow-sm text-sm leading-4 font-medium rounded-md text-blue-700 bg-blue-50 hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+                  >
+                    <Edit2 className="h-3 w-3 mr-1" />
+                    Bulk Edit
+                  </button>
+                )}
+                
+                {canBulkDelete && (
+                  <button
+                    onClick={() => setShowBulkDeleteModal(true)}
+                    disabled={bulkDeleteLoading}
+                    className="inline-flex items-center px-3 py-1 border border-red-300 shadow-sm text-sm leading-4 font-medium rounded-md text-red-700 bg-red-50 hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50"
+                  >
+                    <Trash2 className="h-3 w-3 mr-1" />
+                    Bulk Delete
+                  </button>
+                )}
+                
+                <button
+                  onClick={() => setSelectedApplications([])}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <XCircle className="h-4 w-4" />
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -439,97 +527,8 @@ const ApplicationsPage = () => {
             </div>
           )}
         </div>
-      ) : viewMode === 'grid' ? (
-        // Grid View
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {applications.map((application) => (
-            <div key={application._id} className="bg-white shadow rounded-lg overflow-hidden">
-              <div className="p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center space-x-2">
-                    {getStatusIcon(application.status)}
-                    <span className={`px-2 py-1 text-xs font-medium rounded-full border ${getStatusColor(application.status)}`}>
-                      {application.status.replace('_', ' ').toUpperCase()}
-                    </span>
-                  </div>
-                  <div className="flex space-x-1">
-                    <Link
-                      to={`/applications/${application._id}`}
-                      className="text-blue-600 hover:text-blue-800"
-                    >
-                      <Eye className="h-4 w-4" />
-                    </Link>
-                    {canEdit(application) && (
-                      <Link
-                        to={`/applications/${application._id}/edit`}
-                        className="text-green-600 hover:text-green-800"
-                      >
-                        <Edit2 className="h-4 w-4" />
-                      </Link>
-                    )}
-                  </div>
-                </div>
-                
-                <div className="space-y-3">
-                  <div>
-                    <h3 className="text-lg font-medium text-gray-900">{application.studentName}</h3>
-                    <p className="text-sm text-gray-500">#{application.applicationNumber}</p>
-                  </div>
-                  
-                  <div className="space-y-2 text-sm text-gray-600">
-                    <div className="flex items-center">
-                      <BookOpen className="h-4 w-4 mr-2 text-gray-400" />
-                      <span className="truncate">
-                        {typeof application.programId === 'object' 
-                          ? application.programId?.programName 
-                          : application.programId}
-                      </span>
-                    </div>
-                    
-                    <div className="flex items-center">
-                      <Mail className="h-4 w-4 mr-2 text-gray-400" />
-                      <span className="truncate">{application.email}</span>
-                    </div>
-                    
-                    <div className="flex items-center">
-                      <Phone className="h-4 w-4 mr-2 text-gray-400" />
-                      <span>{formatPhoneNumber(application.mobileNumber)}</span>
-                    </div>
-                    
-                    <div className="flex items-center">
-                      <Calendar className="h-4 w-4 mr-2 text-gray-400" />
-                      <span>
-                        {application.submittedAt 
-                          ? `Submitted: ${new Date(application.submittedAt).toLocaleDateString()}`
-                          : `Created: ${new Date(application.dateCreated).toLocaleDateString()}`}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-                
-                <div className="mt-6 flex space-x-2">
-                  <Link
-                    to={`/applications/${application._id}`}
-                    className="flex-1 text-center px-3 py-2 border border-gray-300 rounded-md text-sm text-gray-700 hover:bg-gray-50"
-                  >
-                    View Details
-                  </Link>
-                  {canSubmit(application) && (
-                    <button
-                      onClick={() => handleSubmitApplication(application._id)}
-                      disabled={actionLoading === application._id}
-                      className="flex-1 text-center px-3 py-2 bg-blue-600 text-white rounded-md text-sm hover:bg-blue-700 disabled:opacity-50"
-                    >
-                      {actionLoading === application._id ? 'Submitting...' : 'Submit'}
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
       ) : (
-        // List View (Enhanced)
+        // Applications List
         <div className="bg-white shadow overflow-hidden sm:rounded-md">
           <ul className="divide-y divide-gray-200">
             {applications.map((application) => (
@@ -537,6 +536,16 @@ const ApplicationsPage = () => {
                 <div className="px-4 py-6 sm:px-6">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-4 flex-1">
+                      {/* Selection checkbox */}
+                      {(canBulkEdit || canBulkDelete) && (
+                        <input
+                          type="checkbox"
+                          checked={selectedApplications.includes(application._id)}
+                          onChange={() => handleSelectApplication(application._id)}
+                          className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                        />
+                      )}
+                      
                       <div className="flex-shrink-0">
                         {getStatusIcon(application.status)}
                       </div>
@@ -559,7 +568,7 @@ const ApplicationsPage = () => {
                           </div>
                         </div>
                         
-                        {/* Enhanced Information Display */}
+                        {/* Application Information */}
                         <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                           <div className="flex items-center text-sm text-gray-600">
                             <BookOpen className="flex-shrink-0 mr-2 h-4 w-4 text-gray-400" />
@@ -582,95 +591,9 @@ const ApplicationsPage = () => {
                           
                           <div className="flex items-center text-sm text-gray-600">
                             <Calendar className="flex-shrink-0 mr-2 h-4 w-4 text-gray-400" />
-                            <span>
-                              Academic Year: {application.academicYear}
-                            </span>
+                            <span>Academic Year: {application.academicYear}</span>
                           </div>
                         </div>
-
-                        {/* Additional Details (Expandable) */}
-                        {expandedCard === application._id && (
-                          <div className="mt-4 p-4 bg-gray-50 rounded-lg">
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                              {/* Personal Details */}
-                              <div>
-                                <h4 className="text-sm font-medium text-gray-700 mb-2">Personal Details</h4>
-                                <div className="space-y-1 text-sm text-gray-600">
-                                  <div className="flex items-center">
-                                    <Users className="h-3 w-3 mr-2 text-gray-400" />
-                                    <span>Father: {application.fatherName}</span>
-                                  </div>
-                                  <div className="flex items-center">
-                                    <Users className="h-3 w-3 mr-2 text-gray-400" />
-                                    <span>Mother: {application.motherName}</span>
-                                  </div>
-                                  <div className="flex items-center">
-                                    <Calendar className="h-3 w-3 mr-2 text-gray-400" />
-                                    <span>DOB: {new Date(application.dateOfBirth).toLocaleDateString()}</span>
-                                  </div>
-                                  <div className="flex items-center">
-                                    <User className="h-3 w-3 mr-2 text-gray-400" />
-                                    <span>Gender: {application.gender}</span>
-                                  </div>
-                                </div>
-                              </div>
-
-                              {/* Contact Details */}
-                              <div>
-                                <h4 className="text-sm font-medium text-gray-700 mb-2">Contact Details</h4>
-                                <div className="space-y-1 text-sm text-gray-600">
-                                  {application.parentMobile && (
-                                    <div className="flex items-center">
-                                      <Phone className="h-3 w-3 mr-2 text-gray-400" />
-                                      <span>Parent: {formatPhoneNumber(application.parentMobile)}</span>
-                                    </div>
-                                  )}
-                                  {application.guardianMobile && (
-                                    <div className="flex items-center">
-                                      <Phone className="h-3 w-3 mr-2 text-gray-400" />
-                                      <span>Guardian: {formatPhoneNumber(application.guardianMobile)}</span>
-                                    </div>
-                                  )}
-                                  {application.presentAddress && (
-                                    <div className="flex items-start">
-                                      <MapPin className="h-3 w-3 mr-2 mt-0.5 text-gray-400" />
-                                      <span className="line-clamp-2">{getAddressString(application.presentAddress)}</span>
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-
-                              {/* Education & Reservation */}
-                              <div>
-                                <h4 className="text-sm font-medium text-gray-700 mb-2">Education & Category</h4>
-                                <div className="space-y-1 text-sm text-gray-600">
-                                  <div className="flex items-center">
-                                    <Award className="h-3 w-3 mr-2 text-gray-400" />
-                                    <span>Category: {application.reservationCategory}</span>
-                                  </div>
-                                  {application.interBoard && (
-                                    <div className="flex items-center">
-                                      <GraduationCap className="h-3 w-3 mr-2 text-gray-400" />
-                                      <span>Board: {application.interBoard}</span>
-                                    </div>
-                                  )}
-                                  {application.interPassYear && (
-                                    <div className="flex items-center">
-                                      <Calendar className="h-3 w-3 mr-2 text-gray-400" />
-                                      <span>Pass Year: {application.interPassYear}</span>
-                                    </div>
-                                  )}
-                                  {application.specialReservation && (
-                                    <div className="flex items-center">
-                                      <Star className="h-3 w-3 mr-2 text-yellow-400" />
-                                      <span>Special: {application.specialReservation}</span>
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        )}
                         
                         <div className="mt-4 flex items-center justify-between">
                           <div className="flex items-center text-sm text-gray-500">
@@ -679,15 +602,6 @@ const ApplicationsPage = () => {
                                 ? `Submitted: ${new Date(application.submittedAt).toLocaleDateString()}`
                                 : `Created: ${new Date(application.dateCreated).toLocaleDateString()}`}
                             </span>
-                          </div>
-                          
-                          <div className="flex items-center space-x-2">
-                            <button
-                              onClick={() => setExpandedCard(expandedCard === application._id ? null : application._id)}
-                              className="text-gray-400 hover:text-gray-600"
-                            >
-                              <MoreVertical className="h-4 w-4" />
-                            </button>
                           </div>
                         </div>
                       </div>
@@ -735,6 +649,21 @@ const ApplicationsPage = () => {
                         <Upload className="h-3 w-3 mr-1" />
                         Documents
                       </Link>
+
+                      {canDelete(application) && (
+                        <button
+                          onClick={() => setShowDeleteModal(application._id)}
+                          disabled={deleteLoading === application._id}
+                          className="inline-flex items-center px-3 py-1 border border-red-300 shadow-sm text-xs leading-4 font-medium rounded-md text-red-700 bg-red-50 hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50"
+                        >
+                          {deleteLoading === application._id ? (
+                            <RefreshCw className="h-3 w-3 mr-1 animate-spin" />
+                          ) : (
+                            <Trash2 className="h-3 w-3 mr-1" />
+                          )}
+                          Delete
+                        </button>
+                      )}
                     </div>
                   </div>
                   
@@ -841,6 +770,173 @@ const ApplicationsPage = () => {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          <div className="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+            <div className="fixed inset-0 transition-opacity" aria-hidden="true">
+              <div className="absolute inset-0 bg-gray-500 opacity-75"></div>
+            </div>
+
+            <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
+              <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
+                <div className="sm:flex sm:items-start">
+                  <div className="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-red-100 sm:mx-0 sm:h-10 sm:w-10">
+                    <AlertTriangle className="h-6 w-6 text-red-600" />
+                  </div>
+                  <div className="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left">
+                    <h3 className="text-lg leading-6 font-medium text-gray-900">
+                      Delete Application
+                    </h3>
+                    <div className="mt-2">
+                      <p className="text-sm text-gray-500">
+                        Are you sure you want to delete this application? This action cannot be undone and all related data will be permanently removed.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
+                <button
+                  onClick={() => handleDeleteApplication(showDeleteModal)}
+                  disabled={deleteLoading === showDeleteModal}
+                  className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-red-600 text-base font-medium text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 sm:ml-3 sm:w-auto sm:text-sm disabled:opacity-50"
+                >
+                  {deleteLoading === showDeleteModal ? 'Deleting...' : 'Delete'}
+                </button>
+                <button
+                  onClick={() => setShowDeleteModal(null)}
+                  className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Update Modal */}
+      {showBulkUpdateModal && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          <div className="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+            <div className="fixed inset-0 transition-opacity" aria-hidden="true">
+              <div className="absolute inset-0 bg-gray-500 opacity-75"></div>
+            </div>
+
+            <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
+              <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
+                <div className="sm:flex sm:items-start">
+                  <div className="mt-3 text-center sm:mt-0 sm:text-left w-full">
+                    <h3 className="text-lg leading-6 font-medium text-gray-900 mb-4">
+                      Bulk Update Applications
+                    </h3>
+                    <p className="text-sm text-gray-500 mb-4">
+                      Updating {selectedApplications.length} applications. Leave fields empty to keep current values.
+                    </p>
+                    
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">Status</label>
+                        <select
+                          value={bulkUpdateData.status}
+                          onChange={(e) => setBulkUpdateData(prev => ({ ...prev, status: e.target.value }))}
+                          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                        >
+                          <option value="">Keep current status</option>
+                          <option value="draft">Draft</option>
+                          <option value="submitted">Submitted</option>
+                          <option value="under_review">Under Review</option>
+                          <option value="approved">Approved</option>
+                          <option value="rejected">Rejected</option>
+                          <option value="frozen">Frozen</option>
+                        </select>
+                      </div>
+                      
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">Academic Year</label>
+                        <select
+                          value={bulkUpdateData.academicYear}
+                          onChange={(e) => setBulkUpdateData(prev => ({ ...prev, academicYear: e.target.value }))}
+                          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                        >
+                          <option value="">Keep current year</option>
+                          <option value="2025-26">2025-26</option>
+                          <option value="2024-25">2024-25</option>
+                          <option value="2026-27">2026-27</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
+                <button
+                  onClick={handleBulkUpdate}
+                  disabled={bulkLoading}
+                  className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-blue-600 text-base font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:ml-3 sm:w-auto sm:text-sm disabled:opacity-50"
+                >
+                  {bulkLoading ? 'Updating...' : 'Update Applications'}
+                </button>
+                <button
+                  onClick={() => setShowBulkUpdateModal(false)}
+                  className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Delete Modal */}
+      {showBulkDeleteModal && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          <div className="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+            <div className="fixed inset-0 transition-opacity" aria-hidden="true">
+              <div className="absolute inset-0 bg-gray-500 opacity-75"></div>
+            </div>
+
+            <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
+              <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
+                <div className="sm:flex sm:items-start">
+                  <div className="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-red-100 sm:mx-0 sm:h-10 sm:w-10">
+                    <AlertTriangle className="h-6 w-6 text-red-600" />
+                  </div>
+                  <div className="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left">
+                    <h3 className="text-lg leading-6 font-medium text-gray-900">
+                      Delete Applications
+                    </h3>
+                    <div className="mt-2">
+                      <p className="text-sm text-gray-500">
+                        Are you sure you want to delete <strong>{selectedApplications.length}</strong> applications? 
+                        This action cannot be undone and all related data will be permanently removed.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
+                <button
+                  onClick={handleBulkDelete}
+                  disabled={bulkDeleteLoading}
+                  className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-red-600 text-base font-medium text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 sm:ml-3 sm:w-auto sm:text-sm disabled:opacity-50"
+                >
+                  {bulkDeleteLoading ? 'Deleting...' : 'Delete Applications'}
+                </button>
+                <button
+                  onClick={() => setShowBulkDeleteModal(false)}
+                  className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>

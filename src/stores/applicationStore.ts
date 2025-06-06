@@ -218,7 +218,8 @@ interface ApplicationState {
   submitLoading: string | null;
   bulkLoading: boolean;
   error: string | null;
-  
+  deleteLoading: string | null;        // NEW
+  bulkDeleteLoading: boolean;          // NEW
   // Actions
   fetchApplications: (filters?: ApplicationFilters) => Promise<void>;
   fetchApplicationById: (id: string) => Promise<Application>;
@@ -232,6 +233,8 @@ interface ApplicationState {
   resetFilters: () => void;
   clearError: () => void;
   clearCurrentApplication: () => void;
+  deleteApplication: (id: string) => Promise<void>;                    // NEW
+  bulkDeleteApplications: (applicationIds: string[]) => Promise<void>; // NEW
 }
 
 const defaultFilters: ApplicationFilters = {
@@ -335,6 +338,8 @@ const useApplicationStore = create<ApplicationState>((set, get) => ({
   loading: false,
   submitLoading: null,
   bulkLoading: false,
+  deleteLoading: null,           // NEW
+  bulkDeleteLoading: false,      // NEW
   error: null,
 
   fetchApplications: async (filters = {}) => {
@@ -557,7 +562,80 @@ const useApplicationStore = create<ApplicationState>((set, get) => ({
       throw error;
     }
   },
+  deleteApplication: async (id) => {
+    try {
+      set({ deleteLoading: id, error: null });
+      console.log(`🗑️ Deleting application: ${id}`);
+      
+      const { data } = await axios.delete(`/api/applications/${id}`);
+      console.log(`✅ Application deleted:`, data.deletedApplication.applicationNumber);
+      
+      // Remove from applications list
+      const updatedApplications = get().applications.filter(app => app._id !== id);
+      
+      // Clear current application if it's the one being deleted
+      const currentApplication = get().currentApplication;
+      const newCurrentApplication = currentApplication?._id === id ? null : currentApplication;
+      
+      set({ 
+        applications: updatedApplications,
+        currentApplication: newCurrentApplication,
+        deleteLoading: null 
+      });
+      
+      return data;
+    } catch (error: any) {
+      console.error('❌ Error deleting application:', error);
+      set({ 
+        error: error.response?.data?.message || 'Failed to delete application', 
+        deleteLoading: null 
+      });
+      throw error;
+    }
+  },
 
+  bulkDeleteApplications: async (applicationIds) => {
+    try {
+      set({ bulkDeleteLoading: true, error: null });
+      console.log(`🗑️ Bulk deleting ${applicationIds.length} applications`);
+      
+      const { data } = await axios.delete('/api/applications/bulk', {
+        data: { 
+          applicationIds, 
+          confirmDelete: true 
+        }
+      });
+      
+      console.log(`✅ Bulk delete completed: ${data.deletedCount} applications deleted`);
+      
+      // Remove deleted applications from the list
+      const updatedApplications = get().applications.filter(
+        app => !applicationIds.includes(app._id)
+      );
+      
+      // Clear current application if it was deleted
+      const currentApplication = get().currentApplication;
+      const newCurrentApplication = 
+        currentApplication && applicationIds.includes(currentApplication._id) 
+          ? null 
+          : currentApplication;
+      
+      set({ 
+        applications: updatedApplications,
+        currentApplication: newCurrentApplication,
+        bulkDeleteLoading: false 
+      });
+      
+      return data;
+    } catch (error: any) {
+      console.error('❌ Error in bulk delete:', error);
+      set({ 
+        error: error.response?.data?.message || 'Failed to bulk delete applications', 
+        bulkDeleteLoading: false 
+      });
+      throw error;
+    }
+  },
   setFilters: (newFilters) => {
     const currentFilters = get().filters;
     const updatedFilters = { ...currentFilters, ...newFilters };

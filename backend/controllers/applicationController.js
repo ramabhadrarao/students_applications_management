@@ -956,6 +956,171 @@ const bulkUpdateApplications = asyncHandler(async (req, res) => {
     throw new Error('Bulk update failed: ' + error.message);
   }
 });
+// @desc    Delete application
+// @route   DELETE /api/applications/:id
+// @access  Private
+const deleteApplication = asyncHandler(async (req, res) => {
+  console.log(`🗑️ Deleting application: ${req.params.id} by user: ${req.user._id} (${req.user.role})`);
+  
+  const application = await Application.findById(req.params.id);
+
+  if (!application) {
+    res.status(404);
+    throw new Error('Application not found');
+  }
+
+  console.log(`📋 Application status: ${application.status}, User: ${application.userId}`);
+
+  // Check if user has permission to delete this application
+  const canDelete = 
+    req.user.role === 'admin' ||
+    (req.user.role === 'student' && 
+     application.userId.toString() === req.user._id.toString() &&
+     application.status === 'draft'); // Only draft applications can be deleted by students
+
+  if (!canDelete) {
+    console.log(`🚫 Delete permission denied for user ${req.user._id}`);
+    res.status(403);
+    throw new Error('Not authorized to delete this application');
+  }
+
+  // Additional validation for student users
+  if (req.user.role === 'student' && application.status !== 'draft') {
+    res.status(400);
+    throw new Error('Only draft applications can be deleted');
+  }
+
+  try {
+    // Store application info for logging before deletion
+    const applicationInfo = {
+      applicationNumber: application.applicationNumber,
+      studentName: application.studentName,
+      status: application.status
+    };
+
+    // Delete related documents first (if any)
+    // You might want to delete related application documents, history, etc.
+    console.log('🗑️ Checking for related documents to delete...');
+    
+    // Delete application documents if you have that model
+    // await ApplicationDocument.deleteMany({ applicationId: req.params.id });
+    
+    // Delete application status history
+    await ApplicationStatusHistory.deleteMany({ applicationId: req.params.id });
+    console.log('📊 Deleted application status history records');
+
+    // Delete the main application
+    await Application.findByIdAndDelete(req.params.id);
+    
+    // Create notification for student (if deleted by admin)
+    if (req.user.role === 'admin' && application.userId.toString() !== req.user._id.toString()) {
+      await Notification.create({
+        userId: application.userId,
+        title: 'Application Deleted',
+        message: `Your application #${applicationInfo.applicationNumber} has been deleted by an administrator.`,
+        type: 'warning',
+      });
+      console.log('📬 Notification sent to student about deletion');
+    }
+    
+    console.log(`✅ Application deleted successfully: ${applicationInfo.applicationNumber}`);
+    
+    res.json({
+      message: 'Application deleted successfully',
+      deletedApplication: {
+        id: req.params.id,
+        applicationNumber: applicationInfo.applicationNumber,
+        studentName: applicationInfo.studentName,
+        status: applicationInfo.status
+      }
+    });
+    
+  } catch (error) {
+    console.error('❌ Error deleting application:', error);
+    res.status(500);
+    throw new Error('Failed to delete application: ' + error.message);
+  }
+});
+
+// @desc    Bulk delete applications (Admin only)
+// @route   DELETE /api/applications/bulk
+// @access  Private/Admin
+const bulkDeleteApplications = asyncHandler(async (req, res) => {
+  console.log('🗑️ Bulk deleting applications...');
+  
+  const { applicationIds, confirmDelete } = req.body;
+  
+  if (!applicationIds || !Array.isArray(applicationIds) || applicationIds.length === 0) {
+    res.status(400);
+    throw new Error('Application IDs array is required');
+  }
+
+  if (!confirmDelete) {
+    res.status(400);
+    throw new Error('Delete confirmation is required');
+  }
+
+  // Only admins can bulk delete
+  if (req.user.role !== 'admin') {
+    res.status(403);
+    throw new Error('Only administrators can perform bulk delete operations');
+  }
+
+  try {
+    // Find applications to be deleted
+    const applications = await Application.find({ _id: { $in: applicationIds } });
+    
+    if (applications.length === 0) {
+      res.status(404);
+      throw new Error('No applications found with the provided IDs');
+    }
+
+    // Store info for logging
+    const deletedInfo = applications.map(app => ({
+      id: app._id,
+      applicationNumber: app.applicationNumber,
+      studentName: app.studentName,
+      status: app.status,
+      userId: app.userId
+    }));
+
+    // Delete related data first
+    await ApplicationStatusHistory.deleteMany({ applicationId: { $in: applicationIds } });
+    console.log('📊 Deleted related status history records');
+
+    // You might also want to delete application documents
+    // await ApplicationDocument.deleteMany({ applicationId: { $in: applicationIds } });
+
+    // Perform bulk delete
+    const result = await Application.deleteMany({ _id: { $in: applicationIds } });
+    
+    // Create notifications for affected students
+    const notifications = applications.map(app => ({
+      userId: app.userId,
+      title: 'Application Deleted',
+      message: `Your application #${app.applicationNumber} has been deleted by an administrator.`,
+      type: 'warning',
+    }));
+    
+    if (notifications.length > 0) {
+      await Notification.insertMany(notifications);
+      console.log(`📬 Created ${notifications.length} deletion notifications`);
+    }
+    
+    console.log(`✅ Bulk delete completed: ${result.deletedCount} applications deleted`);
+    
+    res.json({
+      message: `Successfully deleted ${result.deletedCount} applications`,
+      deletedCount: result.deletedCount,
+      deletedApplications: deletedInfo
+    });
+    
+  } catch (error) {
+    console.error('❌ Error in bulk delete:', error);
+    res.status(500);
+    throw new Error('Bulk delete failed: ' + error.message);
+  }
+});
 
 export {
   getApplications,
@@ -963,6 +1128,8 @@ export {
   createApplication,
   updateApplication,
   submitApplication,
+  deleteApplication,           // NEW
+  bulkDeleteApplications,      // NEW
   getApplicationHistory,
   getApplicationStatistics,
   bulkUpdateApplications
