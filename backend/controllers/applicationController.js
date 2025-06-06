@@ -1,9 +1,13 @@
+// File: backend/controllers/applicationController.js
+// Purpose: Enhanced application controller with improved filtering, sorting, and search
+
 import asyncHandler from 'express-async-handler';
 import Application from '../models/applicationModel.js';
 import ApplicationStatusHistory from '../models/applicationStatusHistoryModel.js';
 import Notification from '../models/notificationModel.js';
+import User from '../models/userModel.js';
 
-// @desc    Fetch all applications
+// @desc    Fetch all applications with enhanced filtering and search
 // @route   GET /api/applications
 // @access  Private
 const getApplications = asyncHandler(async (req, res) => {
@@ -14,8 +18,14 @@ const getApplications = asyncHandler(async (req, res) => {
     page = 1, 
     limit = 10, 
     sortField = 'dateCreated', 
-    sortOrder = 'desc' 
+    sortOrder = 'desc',
+    search = ''
   } = req.query;
+  
+  console.log('📋 Fetching applications with filters:', {
+    status, programId, academicYear, page, limit, sortField, sortOrder, search,
+    userRole: req.user.role, userId: req.user._id
+  });
   
   // Build filter object
   const filter = {};
@@ -28,16 +38,37 @@ const getApplications = asyncHandler(async (req, res) => {
   // For students, only show their own applications
   if (req.user.role === 'student') {
     filter.userId = req.user._id;
+    console.log('👨‍🎓 Student filter applied - only showing applications for user:', req.user._id);
   }
   
   // For program_admin, only show applications for their program
   if (req.user.role === 'program_admin' && req.user.programId) {
     filter.programId = req.user.programId;
+    console.log('👑 Program Admin filter applied - only showing applications for program:', req.user.programId);
+  }
+  
+  // Add search functionality
+  if (search && search.trim()) {
+    const searchRegex = new RegExp(search.trim(), 'i');
+    filter.$or = [
+      { applicationNumber: searchRegex },
+      { studentName: searchRegex },
+      { fatherName: searchRegex },
+      { motherName: searchRegex },
+      { email: searchRegex },
+      { mobileNumber: searchRegex }
+    ];
+    console.log('🔍 Search filter applied:', search.trim());
   }
   
   // Create sort options
   const sort = {};
-  sort[sortField] = sortOrder === 'asc' ? 1 : -1;
+  const validSortFields = ['dateCreated', 'dateUpdated', 'status', 'studentName', 'submittedAt', 'applicationNumber'];
+  const validSortField = validSortFields.includes(sortField) ? sortField : 'dateCreated';
+  sort[validSortField] = sortOrder === 'asc' ? 1 : -1;
+  
+  console.log('🔧 Final filter object:', JSON.stringify(filter, null, 2));
+  console.log('📊 Sort options:', sort);
   
   // Pagination options
   const options = {
@@ -45,50 +76,123 @@ const getApplications = asyncHandler(async (req, res) => {
     limit: parseInt(limit, 10),
     sort,
     populate: [
-      { path: 'programId', select: 'programName programCode department' },
-      { path: 'userId', select: 'email' }
+      { 
+        path: 'programId', 
+        select: 'programName programCode department programType' 
+      },
+      { 
+        path: 'userId', 
+        select: 'email role' 
+      },
+      { 
+        path: 'reviewedBy', 
+        select: 'email' 
+      }
     ]
   };
   
-  // Get paginated results
-  const applications = await Application.paginate(filter, options);
-  
-  res.json(applications);
-});
-
-// @desc    Fetch single application
-// @route   GET /api/applications/:id
-// @access  Private
-const getApplicationById = asyncHandler(async (req, res) => {
-  const application = await Application.findById(req.params.id)
-    .populate('programId', 'programName programCode department')
-    .populate('userId', 'email')
-    .populate('reviewedBy', 'email');
-
-  if (application) {
-    // Check if user has permission to view this application
-    if (
-      req.user.role === 'admin' ||
-      (req.user.role === 'program_admin' && 
-       application.programId._id.toString() === req.user.programId?.toString()) ||
-      (req.user.role === 'student' && 
-       application.userId._id.toString() === req.user._id.toString())
-    ) {
-      res.json(application);
-    } else {
-      res.status(403);
-      throw new Error('Not authorized to access this application');
-    }
-  } else {
-    res.status(404);
-    throw new Error('Application not found');
+  try {
+    // Get paginated results
+    const applications = await Application.paginate(filter, options);
+    
+    console.log(`✅ Found ${applications.docs.length} applications (page ${applications.page} of ${applications.totalPages})`);
+    
+    // Enhanced response with additional metadata
+    const response = {
+      docs: applications.docs,
+      totalDocs: applications.totalDocs,
+      limit: applications.limit,
+      page: applications.page,
+      totalPages: applications.totalPages,
+      hasNextPage: applications.hasNextPage,
+      hasPrevPage: applications.hasPrevPage,
+      nextPage: applications.nextPage,
+      prevPage: applications.prevPage,
+      // Additional metadata for frontend
+      filterApplied: {
+        status: status || null,
+        programId: programId || null,
+        academicYear: academicYear || null,
+        search: search || null
+      },
+      sortApplied: {
+        field: validSortField,
+        order: sortOrder
+      },
+      userInfo: {
+        role: req.user.role,
+        canCreateNew: req.user.role === 'student',
+        canBulkEdit: ['admin', 'program_admin'].includes(req.user.role)
+      }
+    };
+    
+    res.json(response);
+  } catch (error) {
+    console.error('❌ Error fetching applications:', error);
+    res.status(500);
+    throw new Error('Failed to fetch applications: ' + error.message);
   }
 });
 
-// @desc    Create a new application
+// @desc    Fetch single application with enhanced data
+// @route   GET /api/applications/:id
+// @access  Private
+const getApplicationById = asyncHandler(async (req, res) => {
+  console.log(`🔍 Fetching application by ID: ${req.params.id} for user: ${req.user._id} (${req.user.role})`);
+  
+  const application = await Application.findById(req.params.id)
+    .populate('programId', 'programName programCode department programType durationYears totalSeats')
+    .populate('userId', 'email role dateCreated')
+    .populate('reviewedBy', 'email role');
+
+  if (!application) {
+    console.log(`❌ Application not found: ${req.params.id}`);
+    res.status(404);
+    throw new Error('Application not found');
+  }
+
+  // Check if user has permission to view this application
+  const hasPermission = 
+    req.user.role === 'admin' ||
+    (req.user.role === 'program_admin' && 
+     application.programId._id.toString() === req.user.programId?.toString()) ||
+    (req.user.role === 'student' && 
+     application.userId._id.toString() === req.user._id.toString());
+
+  if (!hasPermission) {
+    console.log(`🚫 Access denied for user ${req.user._id} to application ${req.params.id}`);
+    res.status(403);
+    throw new Error('Not authorized to access this application');
+  }
+
+  // Add permission flags for frontend
+  const enhancedApplication = {
+    ...application.toObject(),
+    permissions: {
+      canEdit: req.user.role === 'student' && 
+               application.userId._id.toString() === req.user._id.toString() &&
+               ['draft', 'rejected'].includes(application.status),
+      canSubmit: req.user.role === 'student' && 
+                 application.userId._id.toString() === req.user._id.toString() &&
+                 application.status === 'draft',
+      canReview: ['admin', 'program_admin'].includes(req.user.role),
+      canDelete: req.user.role === 'admin' ||
+                (req.user.role === 'student' && 
+                 application.userId._id.toString() === req.user._id.toString() &&
+                 application.status === 'draft')
+    }
+  };
+
+  console.log(`✅ Application fetched successfully with permissions:`, enhancedApplication.permissions);
+  res.json(enhancedApplication);
+});
+
+// @desc    Create a new application with enhanced validation
 // @route   POST /api/applications
 // @access  Private/Student
 const createApplication = asyncHandler(async (req, res) => {
+  console.log('📝 Creating new application for user:', req.user._id);
+  
   const {
     programId,
     academicYear,
@@ -115,41 +219,62 @@ const createApplication = asyncHandler(async (req, res) => {
     rationCardNumber,
   } = req.body;
 
+  // Validate required fields
+  if (!programId || !academicYear || !studentName || !fatherName || !motherName || 
+      !dateOfBirth || !gender || !mobileNumber || !email) {
+    res.status(400);
+    throw new Error('Missing required fields for application creation');
+  }
+
+  // Check if user already has an application for this program and academic year
+  const existingApplication = await Application.findOne({
+    userId: req.user._id,
+    programId,
+    academicYear
+  });
+
+  if (existingApplication) {
+    res.status(400);
+    throw new Error('You already have an application for this program and academic year');
+  }
+
   // Generate a unique application number
   const applicationCount = await Application.countDocuments();
   const year = new Date().getFullYear().toString().substr(-2);
   const applicationNumber = `APP${year}${(applicationCount + 1).toString().padStart(6, '0')}`;
 
-  const application = await Application.create({
-    applicationNumber,
-    userId: req.user._id,
-    programId,
-    academicYear,
-    status: 'draft',
-    studentName,
-    fatherName,
-    motherName,
-    dateOfBirth,
-    gender,
-    aadharNumber,
-    mobileNumber,
-    parentMobile,
-    guardianMobile,
-    email,
-    presentAddress,
-    permanentAddress,
-    religion,
-    caste,
-    reservationCategory,
-    isPhysicallyHandicapped,
-    sadaramNumber,
-    identificationMarks,
-    specialReservation,
-    meesevaDetails,
-    rationCardNumber,
-  });
+  console.log('🔢 Generated application number:', applicationNumber);
 
-  if (application) {
+  try {
+    const application = await Application.create({
+      applicationNumber,
+      userId: req.user._id,
+      programId,
+      academicYear,
+      status: 'draft',
+      studentName,
+      fatherName,
+      motherName,
+      dateOfBirth,
+      gender,
+      aadharNumber,
+      mobileNumber,
+      parentMobile,
+      guardianMobile,
+      email,
+      presentAddress,
+      permanentAddress,
+      religion,
+      caste,
+      reservationCategory,
+      isPhysicallyHandicapped,
+      sadaramNumber,
+      identificationMarks,
+      specialReservation,
+      meesevaDetails,
+      rationCardNumber,
+    });
+
     // Create status history record
     await ApplicationStatusHistory.create({
       applicationId: application._id,
@@ -167,17 +292,27 @@ const createApplication = asyncHandler(async (req, res) => {
       actionUrl: `/applications/${application._id}`,
     });
     
-    res.status(201).json(application);
-  } else {
+    console.log(`✅ Application created successfully: ${applicationNumber}`);
+    
+    // Populate the response
+    const populatedApplication = await Application.findById(application._id)
+      .populate('programId', 'programName programCode department')
+      .populate('userId', 'email');
+    
+    res.status(201).json(populatedApplication);
+  } catch (error) {
+    console.error('❌ Error creating application:', error);
     res.status(400);
-    throw new Error('Invalid application data');
+    throw new Error('Failed to create application: ' + error.message);
   }
 });
 
-// @desc    Update application
+// @desc    Update application with enhanced validation
 // @route   PUT /api/applications/:id
 // @access  Private
 const updateApplication = asyncHandler(async (req, res) => {
+  console.log(`📝 Updating application: ${req.params.id} by user: ${req.user._id} (${req.user.role})`);
+  
   const application = await Application.findById(req.params.id);
 
   if (!application) {
@@ -185,16 +320,25 @@ const updateApplication = asyncHandler(async (req, res) => {
     throw new Error('Application not found');
   }
 
+  console.log(`📋 Current application status: ${application.status}`);
+
   // Check if user has permission to update this application
-  if (
+  const canUpdate = 
     req.user.role === 'admin' ||
     (req.user.role === 'program_admin' && 
      application.programId.toString() === req.user.programId?.toString()) ||
     (req.user.role === 'student' && 
      application.userId.toString() === req.user._id.toString() &&
-     ['draft', 'rejected'].includes(application.status))
-  ) {
-    // Update only allowed fields based on role
+     ['draft', 'rejected'].includes(application.status));
+
+  if (!canUpdate) {
+    console.log(`🚫 Update permission denied for user ${req.user._id}`);
+    res.status(403);
+    throw new Error('Not authorized to update this application');
+  }
+
+  try {
+    // Handle different update scenarios based on user role
     if (req.user.role === 'student') {
       // Students can only update their applications if they're in draft or rejected status
       if (!['draft', 'rejected'].includes(application.status)) {
@@ -202,23 +346,38 @@ const updateApplication = asyncHandler(async (req, res) => {
         throw new Error('Application can only be updated in draft or rejected status');
       }
       
-      // Update basic fields
-      Object.keys(req.body).forEach(key => {
-        // Prevent changing critical fields
-        if (!['applicationNumber', 'userId', 'status', 'submittedAt', 'reviewedBy', 'reviewedAt'].includes(key)) {
-          application[key] = req.body[key];
+      // Update basic fields (prevent changing critical fields)
+      const allowedFields = [
+        'studentName', 'fatherName', 'motherName', 'dateOfBirth', 'gender',
+        'aadharNumber', 'mobileNumber', 'parentMobile', 'guardianMobile', 'email',
+        'presentAddress', 'permanentAddress', 'religion', 'caste', 'reservationCategory',
+        'isPhysicallyHandicapped', 'sadaramNumber', 'identificationMarks',
+        'specialReservation', 'meesevaDetails', 'rationCardNumber'
+      ];
+      
+      allowedFields.forEach(field => {
+        if (req.body[field] !== undefined) {
+          application[field] = req.body[field];
         }
       });
+      
+      console.log('👨‍🎓 Student update - basic fields only');
+      
     } else {
       // Admins and program admins can update more fields
       Object.keys(req.body).forEach(key => {
-        application[key] = req.body[key];
+        // Prevent changing certain system fields
+        if (!['applicationNumber', 'userId', 'dateCreated'].includes(key)) {
+          application[key] = req.body[key];
+        }
       });
       
-      // If status is changing, record the change in history
+      // Handle status changes for admin users
       if (req.body.status && req.body.status !== application.status) {
         const oldStatus = application.status;
         application.status = req.body.status;
+        
+        console.log(`🔄 Status change: ${oldStatus} → ${req.body.status}`);
         
         // Set timestamps for special status changes
         if (req.body.status === 'submitted' && !application.submittedAt) {
@@ -248,24 +407,41 @@ const updateApplication = asyncHandler(async (req, res) => {
                 req.body.status === 'rejected' ? 'danger' : 'info',
           actionUrl: `/applications/${application._id}`,
         });
+        
+        console.log(`📬 Notification created for status change`);
       }
+      
+      console.log('👑 Admin/Program Admin update - full access');
     }
     
     application.dateUpdated = Date.now();
     
     const updatedApplication = await application.save();
-    res.json(updatedApplication);
-  } else {
-    res.status(403);
-    throw new Error('Not authorized to update this application');
+    
+    // Populate the response
+    const populatedApplication = await Application.findById(updatedApplication._id)
+      .populate('programId', 'programName programCode department')
+      .populate('userId', 'email')
+      .populate('reviewedBy', 'email');
+    
+    console.log(`✅ Application updated successfully`);
+    res.json(populatedApplication);
+    
+  } catch (error) {
+    console.error('❌ Error updating application:', error);
+    res.status(400);
+    throw new Error('Failed to update application: ' + error.message);
   }
 });
 
-// @desc    Submit application
+// @desc    Submit application with enhanced validation
 // @route   PUT /api/applications/:id/submit
 // @access  Private/Student
 const submitApplication = asyncHandler(async (req, res) => {
-  const application = await Application.findById(req.params.id);
+  console.log(`📤 Submitting application: ${req.params.id} by user: ${req.user._id}`);
+  
+  const application = await Application.findById(req.params.id)
+    .populate('programId', 'programName programCode');
 
   if (!application) {
     res.status(404);
@@ -273,10 +449,27 @@ const submitApplication = asyncHandler(async (req, res) => {
   }
 
   // Check if user has permission to submit this application
-  if (
-    application.userId.toString() === req.user._id.toString() &&
-    application.status === 'draft'
-  ) {
+  if (application.userId.toString() !== req.user._id.toString()) {
+    console.log(`🚫 Submit permission denied - not application owner`);
+    res.status(403);
+    throw new Error('Not authorized to submit this application');
+  }
+
+  if (application.status !== 'draft') {
+    res.status(400);
+    throw new Error('Only draft applications can be submitted');
+  }
+
+  try {
+    // Validate application completeness before submission
+    const requiredFields = ['studentName', 'fatherName', 'motherName', 'dateOfBirth', 'gender', 'mobileNumber', 'email'];
+    const missingFields = requiredFields.filter(field => !application[field]);
+    
+    if (missingFields.length > 0) {
+      res.status(400);
+      throw new Error(`Missing required fields: ${missingFields.join(', ')}`);
+    }
+
     application.status = 'submitted';
     application.submittedAt = Date.now();
     application.dateUpdated = Date.now();
@@ -296,7 +489,7 @@ const submitApplication = asyncHandler(async (req, res) => {
     if (application.programId) {
       const programAdmins = await User.find({ 
         role: 'program_admin', 
-        programId: application.programId,
+        programId: application.programId._id,
         isActive: true 
       });
       
@@ -304,17 +497,26 @@ const submitApplication = asyncHandler(async (req, res) => {
         await Notification.create({
           userId: admin._id,
           title: 'New Application Submitted',
-          message: `A new application #${application.applicationNumber} has been submitted and is pending review.`,
+          message: `A new application #${application.applicationNumber} for ${application.programId.programName} has been submitted and is pending review.`,
           type: 'info',
           actionUrl: `/applications/${application._id}`,
         });
       }
+      
+      console.log(`📬 Notifications sent to ${programAdmins.length} program admins`);
     }
     
-    res.json(updatedApplication);
-  } else {
-    res.status(403);
-    throw new Error('Not authorized to submit this application or application is not in draft status');
+    // Populate the response
+    const populatedApplication = await Application.findById(updatedApplication._id)
+      .populate('programId', 'programName programCode department')
+      .populate('userId', 'email');
+    
+    console.log(`✅ Application submitted successfully: ${application.applicationNumber}`);
+    res.json(populatedApplication);
+    
+  } catch (error) {
+    console.error('❌ Error submitting application:', error);
+    throw error;
   }
 });
 
@@ -322,6 +524,8 @@ const submitApplication = asyncHandler(async (req, res) => {
 // @route   GET /api/applications/:id/history
 // @access  Private
 const getApplicationHistory = asyncHandler(async (req, res) => {
+  console.log(`📊 Fetching history for application: ${req.params.id}`);
+  
   const application = await Application.findById(req.params.id);
 
   if (!application) {
@@ -330,111 +534,218 @@ const getApplicationHistory = asyncHandler(async (req, res) => {
   }
 
   // Check if user has permission to view this application
-  if (
+  const hasPermission = 
     req.user.role === 'admin' ||
     (req.user.role === 'program_admin' && 
      application.programId.toString() === req.user.programId?.toString()) ||
     (req.user.role === 'student' && 
-     application.userId.toString() === req.user._id.toString())
-  ) {
-    const history = await ApplicationStatusHistory.find({ applicationId: req.params.id })
-      .sort({ dateCreated: -1 })
-      .populate('changedBy', 'email');
-    
-    res.json(history);
-  } else {
+     application.userId.toString() === req.user._id.toString());
+
+  if (!hasPermission) {
     res.status(403);
     throw new Error('Not authorized to access this application');
   }
+
+  const history = await ApplicationStatusHistory.find({ applicationId: req.params.id })
+    .sort({ dateCreated: -1 })
+    .populate('changedBy', 'email role');
+  
+  console.log(`✅ Found ${history.length} history records`);
+  res.json(history);
 });
 
-// @desc    Get application statistics
+// @desc    Get application statistics (Enhanced)
 // @route   GET /api/applications/statistics
 // @access  Private/Admin
 const getApplicationStatistics = asyncHandler(async (req, res) => {
-  const { academicYear } = req.query;
+  console.log('📊 Generating application statistics...');
+  
+  const { academicYear, programId } = req.query;
   
   if (!academicYear) {
     res.status(400);
     throw new Error('Academic year is required');
   }
   
-  // Basic statistics
-  const totalApplications = await Application.countDocuments({ academicYear });
-  const statusCounts = await Application.aggregate([
-    { $match: { academicYear } },
-    { $group: { _id: '$status', count: { $sum: 1 } } }
-  ]);
+  const baseFilter = { academicYear };
+  if (programId) baseFilter.programId = programId;
   
-  // Convert to object for easier access
-  const statusStats = statusCounts.reduce((acc, curr) => {
-    acc[curr._id] = curr.count;
-    return acc;
-  }, {});
-  
-  // Program-wise statistics
-  const programStats = await Application.aggregate([
-    { $match: { academicYear } },
-    { 
-      $lookup: {
-        from: 'programs',
-        localField: 'programId',
-        foreignField: '_id',
-        as: 'program'
-      }
-    },
-    { $unwind: '$program' },
-    {
-      $group: {
-        _id: {
-          programId: '$programId',
-          programName: '$program.programName',
-          department: '$program.department'
-        },
-        totalApplications: { $sum: 1 },
-        submittedApplications: {
-          $sum: { $cond: [{ $eq: ['$status', 'submitted'] }, 1, 0] }
-        },
-        approvedApplications: {
-          $sum: { $cond: [{ $eq: ['$status', 'approved'] }, 1, 0] }
-        },
-        rejectedApplications: {
-          $sum: { $cond: [{ $eq: ['$status', 'rejected'] }, 1, 0] }
+  try {
+    // Basic statistics
+    const totalApplications = await Application.countDocuments(baseFilter);
+    
+    // Status-wise counts
+    const statusCounts = await Application.aggregate([
+      { $match: baseFilter },
+      { $group: { _id: '$status', count: { $sum: 1 } } }
+    ]);
+    
+    // Convert to object for easier access
+    const statusStats = statusCounts.reduce((acc, curr) => {
+      acc[curr._id] = curr.count;
+      return acc;
+    }, {});
+    
+    // Program-wise statistics
+    const programStats = await Application.aggregate([
+      { $match: baseFilter },
+      { 
+        $lookup: {
+          from: 'programs',
+          localField: 'programId',
+          foreignField: '_id',
+          as: 'program'
+        }
+      },
+      { $unwind: '$program' },
+      {
+        $group: {
+          _id: {
+            programId: '$programId',
+            programName: '$program.programName',
+            department: '$program.department'
+          },
+          totalApplications: { $sum: 1 },
+          draftApplications: {
+            $sum: { $cond: [{ $eq: ['$status', 'draft'] }, 1, 0] }
+          },
+          submittedApplications: {
+            $sum: { $cond: [{ $eq: ['$status', 'submitted'] }, 1, 0] }
+          },
+          underReviewApplications: {
+            $sum: { $cond: [{ $eq: ['$status', 'under_review'] }, 1, 0] }
+          },
+          approvedApplications: {
+            $sum: { $cond: [{ $eq: ['$status', 'approved'] }, 1, 0] }
+          },
+          rejectedApplications: {
+            $sum: { $cond: [{ $eq: ['$status', 'rejected'] }, 1, 0] }
+          },
+          frozenApplications: {
+            $sum: { $cond: [{ $eq: ['$status', 'frozen'] }, 1, 0] }
+          }
+        }
+      },
+      {
+        $project: {
+          _id: 0,
+          programId: '$_id.programId',
+          programName: '$_id.programName',
+          department: '$_id.department',
+          totalApplications: 1,
+          draftApplications: 1,
+          submittedApplications: 1,
+          underReviewApplications: 1,
+          approvedApplications: 1,
+          rejectedApplications: 1,
+          frozenApplications: 1
         }
       }
-    },
-    {
-      $project: {
-        _id: 0,
-        programId: '$_id.programId',
-        programName: '$_id.programName',
-        department: '$_id.department',
-        totalApplications: 1,
-        submittedApplications: 1,
-        approvedApplications: 1,
-        rejectedApplications: 1
-      }
+    ]);
+    
+    // Time-based statistics (applications per month)
+    const monthlyStats = await Application.aggregate([
+      { $match: baseFilter },
+      {
+        $group: {
+          _id: { $month: '$dateCreated' },
+          count: { $sum: 1 }
+        }
+      },
+      { $sort: { _id: 1 } }
+    ]);
+    
+    const response = {
+      totalApplications,
+      statusStats,
+      programStats,
+      monthlyStats,
+      generatedAt: new Date(),
+      filters: { academicYear, programId }
+    };
+    
+    console.log(`✅ Statistics generated for ${totalApplications} applications`);
+    res.json(response);
+    
+  } catch (error) {
+    console.error('❌ Error generating statistics:', error);
+    res.status(500);
+    throw new Error('Failed to generate statistics: ' + error.message);
+  }
+});
+
+// @desc    Bulk update applications (NEW)
+// @route   PUT /api/applications/bulk
+// @access  Private/Admin
+const bulkUpdateApplications = asyncHandler(async (req, res) => {
+  console.log('🔄 Bulk updating applications...');
+  
+  const { applicationIds, updates } = req.body;
+  
+  if (!applicationIds || !Array.isArray(applicationIds) || applicationIds.length === 0) {
+    res.status(400);
+    throw new Error('Application IDs array is required');
+  }
+  
+  if (!updates || typeof updates !== 'object') {
+    res.status(400);
+    throw new Error('Updates object is required');
+  }
+  
+  // Only allow certain fields to be bulk updated
+  const allowedFields = ['status', 'academicYear', 'reviewedBy'];
+  const filteredUpdates = {};
+  
+  allowedFields.forEach(field => {
+    if (updates[field] !== undefined) {
+      filteredUpdates[field] = updates[field];
     }
-  ]);
-  
-  // Time-based statistics (applications per month)
-  const monthlyStats = await Application.aggregate([
-    { $match: { academicYear } },
-    {
-      $group: {
-        _id: { $month: '$dateCreated' },
-        count: { $sum: 1 }
-      }
-    },
-    { $sort: { _id: 1 } }
-  ]);
-  
-  res.json({
-    totalApplications,
-    statusStats,
-    programStats,
-    monthlyStats
   });
+  
+  if (Object.keys(filteredUpdates).length === 0) {
+    res.status(400);
+    throw new Error('No valid update fields provided');
+  }
+  
+  try {
+    // Add timestamp
+    filteredUpdates.dateUpdated = Date.now();
+    
+    // Perform bulk update
+    const result = await Application.updateMany(
+      { _id: { $in: applicationIds } },
+      { $set: filteredUpdates }
+    );
+    
+    console.log(`✅ Bulk updated ${result.modifiedCount} applications`);
+    
+    // If status was updated, create history records
+    if (filteredUpdates.status) {
+      const applications = await Application.find({ _id: { $in: applicationIds } });
+      
+      const historyRecords = applications.map(app => ({
+        applicationId: app._id,
+        fromStatus: app.status, // This will be the old status
+        toStatus: filteredUpdates.status,
+        changedBy: req.user._id,
+        remarks: `Bulk status update to ${filteredUpdates.status}`
+      }));
+      
+      await ApplicationStatusHistory.insertMany(historyRecords);
+      console.log(`📊 Created ${historyRecords.length} history records`);
+    }
+    
+    res.json({
+      message: `Successfully updated ${result.modifiedCount} applications`,
+      modifiedCount: result.modifiedCount,
+      matchedCount: result.matchedCount
+    });
+    
+  } catch (error) {
+    console.error('❌ Error in bulk update:', error);
+    res.status(500);
+    throw new Error('Bulk update failed: ' + error.message);
+  }
 });
 
 export {
@@ -444,5 +755,6 @@ export {
   updateApplication,
   submitApplication,
   getApplicationHistory,
-  getApplicationStatistics
+  getApplicationStatistics,
+  bulkUpdateApplications
 };
