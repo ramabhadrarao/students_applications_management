@@ -1,3 +1,6 @@
+// File: backend/server.js
+// Purpose: Main server file with all routes including new controllers
+
 import express from 'express';
 import path from 'path';
 import cors from 'cors';
@@ -5,9 +8,14 @@ import dotenv from 'dotenv';
 import mongoose from 'mongoose';
 import cookieParser from 'cookie-parser';
 
+// Import route files
 import userRoutes from './routes/userRoutes.js';
 import programRoutes from './routes/programRoutes.js';
 import applicationRoutes from './routes/applicationRoutes.js';
+import certificateTypeRoutes from './routes/certificateTypeRoutes.js';
+import fileUploadRoutes from './routes/fileUploadRoutes.js';
+import notificationRoutes from './routes/notificationRoutes.js';
+import applicationDocumentRoutes from './routes/applicationDocumentRoutes.js';
 
 // Load env vars
 dotenv.config();
@@ -37,9 +45,18 @@ app.use(cors());
 app.use('/api/users', userRoutes);
 app.use('/api/programs', programRoutes);
 app.use('/api/applications', applicationRoutes);
+app.use('/api/certificate-types', certificateTypeRoutes);
+app.use('/api/files', fileUploadRoutes);
+app.use('/api/notifications', notificationRoutes);
+
+// Nested routes for application documents
+app.use('/api/applications/:applicationId/documents', applicationDocumentRoutes);
+
+// Serve static files (uploads)
+const __dirname = path.resolve();
+app.use('/uploads', express.static(path.join(__dirname, '/uploads')));
 
 // Serve static assets in production
-const __dirname = path.resolve();
 if (process.env.NODE_ENV === 'production') {
   app.use(express.static(path.join(__dirname, '/dist')));
 
