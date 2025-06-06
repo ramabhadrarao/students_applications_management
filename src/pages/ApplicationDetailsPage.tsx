@@ -1,5 +1,5 @@
 // File: src/pages/ApplicationDetailsPage.tsx
-// Purpose: Complete application view with documents, approval mechanism, and file management
+// Purpose: Complete application view with PROGRAM-SPECIFIC documents, approval mechanism, and file management
 
 import React, { useEffect, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
@@ -24,7 +24,7 @@ import {
 } from 'lucide-react';
 import useApplicationStore from '../stores/applicationStore';
 import useApplicationDocumentStore from '../stores/applicationDocumentStore';
-import useCertificateTypeStore from '../stores/certificateTypeStore';
+import useProgramCertificateRequirementStore from '../stores/programCertificateRequirementStore'; // ✅ UPDATED
 import useAuthStore from '../stores/authStore';
 
 const ApplicationDetailsPage = () => {
@@ -48,7 +48,11 @@ const ApplicationDetailsPage = () => {
     getDocumentVerificationStatus
   } = useApplicationDocumentStore();
 
-  const { certificateTypes, fetchCertificateTypes } = useCertificateTypeStore();
+  // ✅ UPDATED: Use program certificate requirements instead of all certificate types
+  const { 
+    requirements: programRequirements, 
+    fetchProgramRequirements 
+  } = useProgramCertificateRequirementStore();
 
   const [showHistory, setShowHistory] = useState(false);
   const [activeTab, setActiveTab] = useState('details');
@@ -64,9 +68,22 @@ const ApplicationDetailsPage = () => {
       fetchApplicationHistory(id);
       fetchApplicationDocuments(id);
       getDocumentVerificationStatus(id);
-      fetchCertificateTypes();
     }
   }, [id]);
+
+  // ✅ UPDATED: Fetch program-specific requirements when application is loaded
+  useEffect(() => {
+    if (currentApplication?.programId) {
+      // Extract the actual ID from the programId (which might be populated object)
+      const programId = typeof currentApplication.programId === 'string' 
+        ? currentApplication.programId 
+        : currentApplication.programId._id;
+      
+      if (programId) {
+        fetchProgramRequirements(programId);
+      }
+    }
+  }, [currentApplication?.programId]);
 
   const handleStatusChange = async (newStatus: string, comments: string = '') => {
     try {
@@ -98,23 +115,27 @@ const ApplicationDetailsPage = () => {
     }
   };
 
+  // ✅ UPDATED: Get required documents based on program requirements
   const getRequiredDocumentsForProgram = () => {
-    return certificateTypes.filter(ct => ct.isRequired && ct.isActive);
+    return programRequirements.filter(req => req.isRequired && req.isActive);
   };
 
+  // ✅ UPDATED: Calculate document completion status based on program requirements
   const getDocumentCompletionStatus = () => {
-    const required = getRequiredDocumentsForProgram();
-    const submitted = documents.filter(doc => 
-      required.some(req => req._id === doc.certificateTypeId._id)
+    const requiredProgramDocs = getRequiredDocumentsForProgram();
+    const submittedDocs = documents.filter(doc => 
+      requiredProgramDocs.some(req => req.certificateTypeId._id === doc.certificateTypeId._id)
     );
-    const verified = submitted.filter(doc => doc.isVerified);
+    const verifiedDocs = submittedDocs.filter(doc => doc.isVerified);
     
     return {
-      required: required.length,
-      submitted: submitted.length,
-      verified: verified.length,
-      completionPercentage: required.length > 0 ? Math.round((submitted.length / required.length) * 100) : 100,
-      verificationPercentage: submitted.length > 0 ? Math.round((verified.length / submitted.length) * 100) : 0
+      required: requiredProgramDocs.length,
+      submitted: submittedDocs.length,
+      verified: verifiedDocs.length,
+      completionPercentage: requiredProgramDocs.length > 0 ? 
+        Math.round((submittedDocs.length / requiredProgramDocs.length) * 100) : 100,
+      verificationPercentage: submittedDocs.length > 0 ? 
+        Math.round((verifiedDocs.length / submittedDocs.length) * 100) : 0
     };
   };
 
@@ -182,7 +203,9 @@ const ApplicationDetailsPage = () => {
               </div>
               <div className="mt-2 flex items-center text-sm text-gray-500">
                 <FileText className="flex-shrink-0 mr-1.5 h-5 w-5 text-gray-400" />
-                {currentApplication.programId?.programName}
+                {typeof currentApplication.programId === 'string' 
+                  ? currentApplication.programId 
+                  : currentApplication.programId?.programName}
               </div>
               <div className="mt-2 flex items-center text-sm text-gray-500">
                 <Calendar className="flex-shrink-0 mr-1.5 h-5 w-5 text-gray-400" />
@@ -237,6 +260,9 @@ const ApplicationDetailsPage = () => {
                 style={{ width: `${docStatus.completionPercentage}%` }}
               ></div>
             </div>
+            <p className="text-xs text-gray-500 mt-1">
+              {docStatus.submitted} of {docStatus.required} required documents
+            </p>
           </div>
           
           <div className="bg-gray-50 rounded-lg p-4">
@@ -253,10 +279,13 @@ const ApplicationDetailsPage = () => {
                 style={{ width: `${docStatus.verificationPercentage}%` }}
               ></div>
             </div>
+            <p className="text-xs text-gray-500 mt-1">
+              {docStatus.verified} of {docStatus.submitted} documents verified
+            </p>
           </div>
         </div>
 
-        {/* Approval Warning */}
+        {/* ✅ UPDATED: Program-specific approval warning */}
         {(user?.role === 'admin' || user?.role === 'program_admin') && 
          currentApplication.status === 'submitted' && 
          docStatus.completionPercentage < 100 && (
@@ -265,10 +294,10 @@ const ApplicationDetailsPage = () => {
               <AlertTriangle className="h-5 w-5 text-yellow-400" />
               <div className="ml-3">
                 <h3 className="text-sm font-medium text-yellow-800">
-                  Cannot Approve Yet
+                  Cannot Approve Yet - Program Requirements Not Met
                 </h3>
                 <p className="text-sm text-yellow-700 mt-1">
-                  All required documents must be uploaded and verified before this application can be approved.
+                  All program-specific required documents must be uploaded and verified before this application can be approved.
                   Missing: {docStatus.required - docStatus.submitted} documents, 
                   Unverified: {docStatus.submitted - docStatus.verified} documents.
                 </p>
@@ -430,12 +459,12 @@ const ApplicationDetailsPage = () => {
             </div>
           )}
 
-          {/* Documents Tab */}
+          {/* ✅ UPDATED: Documents Tab with Program-Specific Requirements */}
           {activeTab === 'documents' && (
             <div className="space-y-6">
               <div className="flex justify-between items-center">
                 <h3 className="text-lg leading-6 font-medium text-gray-900">
-                  Required Documents
+                  Program Required Documents
                 </h3>
                 {user?.role === 'student' && (
                   <Link
@@ -448,12 +477,24 @@ const ApplicationDetailsPage = () => {
                 )}
               </div>
 
+              {/* Program Information */}
+              {currentApplication.programId && typeof currentApplication.programId === 'object' && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <h4 className="text-sm font-medium text-blue-800">
+                    Program: {currentApplication.programId.programName} ({currentApplication.programId.programCode})
+                  </h4>
+                  <p className="text-sm text-blue-700 mt-1">
+                    The documents below are specifically required for this program.
+                  </p>
+                </div>
+              )}
+
               {/* Document Status Overview */}
               <div className="bg-gray-50 rounded-lg p-4">
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                   <div className="text-center">
                     <p className="text-2xl font-bold text-blue-600">{docStatus.required}</p>
-                    <p className="text-sm text-gray-500">Required</p>
+                    <p className="text-sm text-gray-500">Required for Program</p>
                   </div>
                   <div className="text-center">
                     <p className="text-2xl font-bold text-green-600">{docStatus.submitted}</p>
@@ -470,21 +511,27 @@ const ApplicationDetailsPage = () => {
                 </div>
               </div>
 
-              {/* Documents List */}
+              {/* ✅ UPDATED: Documents List - Program-Specific */}
               <div className="space-y-4">
-                {getRequiredDocumentsForProgram().map((certType) => {
-                  const document = documents.find(doc => doc.certificateTypeId._id === certType._id);
+                {getRequiredDocumentsForProgram().map((requirement) => {
+                  const document = documents.find(doc => doc.certificateTypeId._id === requirement.certificateTypeId._id);
                   
                   return (
-                    <div key={certType._id} className="border border-gray-200 rounded-lg p-4">
+                    <div key={requirement._id} className="border border-gray-200 rounded-lg p-4">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center space-x-4">
                           <div className={`w-4 h-4 rounded-full ${
                             document ? (document.isVerified ? 'bg-green-500' : 'bg-yellow-500') : 'bg-red-500'
                           }`}></div>
                           <div>
-                            <h4 className="text-sm font-medium text-gray-900">{certType.name}</h4>
-                            <p className="text-sm text-gray-500">{certType.description}</p>
+                            <h4 className="text-sm font-medium text-gray-900">{requirement.certificateTypeId.name}</h4>
+                            <p className="text-sm text-gray-500">{requirement.certificateTypeId.description}</p>
+                            {/* ✅ UPDATED: Show program-specific special instructions */}
+                            {requirement.specialInstructions && (
+                              <p className="text-sm text-blue-600 mt-1">
+                                <strong>Special Instructions:</strong> {requirement.specialInstructions}
+                              </p>
+                            )}
                             {document && (
                               <p className="text-xs text-gray-400 mt-1">
                                 Uploaded: {new Date(document.dateCreated).toLocaleDateString()}
@@ -530,6 +577,17 @@ const ApplicationDetailsPage = () => {
                     </div>
                   );
                 })}
+
+                {/* ✅ Show message if no program requirements found */}
+                {getRequiredDocumentsForProgram().length === 0 && (
+                  <div className="text-center py-8">
+                    <FileText className="mx-auto h-12 w-12 text-gray-400" />
+                    <h3 className="mt-2 text-sm font-medium text-gray-900">No certificate requirements configured</h3>
+                    <p className="mt-1 text-sm text-gray-500">
+                      This program does not have any specific document requirements configured yet.
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -641,7 +699,7 @@ const ApplicationDetailsPage = () => {
                     Prerequisites Not Met
                   </h3>
                   <p className="text-sm text-yellow-700 mt-1">
-                    All required documents must be uploaded and verified before approval.
+                    All program-specific required documents must be uploaded and verified before approval.
                   </p>
                   <div className="mt-2">
                     <Link

@@ -1,5 +1,5 @@
 // File: backend/controllers/applicationDocumentController.js
-// Purpose: Handle application document operations with program requirements integration (UPDATED)
+// Purpose: Handle application document operations with program requirements integration (FIXED)
 
 import asyncHandler from 'express-async-handler';
 import ApplicationDocument from '../models/applicationDocumentModel.js';
@@ -8,49 +8,7 @@ import CertificateType from '../models/certificateTypeModel.js';
 import ProgramCertificateRequirement from '../models/programCertificateRequirementModel.js';
 import FileUpload from '../models/fileUploadModel.js';
 
-// @desc    Get documents for an application
-// @route   GET /api/applications/:applicationId/documents
-// @access  Private
-const getApplicationDocuments = asyncHandler(async (req, res) => {
-  try {
-    console.log(`📋 Fetching documents for application: ${req.params.applicationId}`);
-    
-    // Check if user has permission to view this application
-    const application = await Application.findById(req.params.applicationId);
-    if (!application) {
-      res.status(404);
-      throw new Error('Application not found');
-    }
-    
-    // Permission check
-    if (
-      req.user.role !== 'admin' &&
-      (req.user.role === 'program_admin' && 
-       application.programId.toString() !== req.user.programId?.toString()) &&
-      (req.user.role === 'student' && 
-       application.userId.toString() !== req.user._id.toString())
-    ) {
-      res.status(403);
-      throw new Error('Not authorized to access these documents');
-    }
-    
-    const documents = await ApplicationDocument.find({ 
-      applicationId: req.params.applicationId 
-    })
-      .populate('certificateTypeId', 'name description isRequired')
-      .populate('fileUploadId', 'uuid filename originalName fileSize mimeType uploadDate')
-      .populate('verifiedBy', 'email')
-      .sort({ 'certificateTypeId.displayOrder': 1 });
-    
-    console.log(`✅ Found ${documents.length} documents`);
-    res.json(documents);
-  } catch (error) {
-    console.error('❌ Error in getApplicationDocuments:', error);
-    throw error;
-  }
-});
-
-// @desc    Get document verification status for application (UPDATED)
+// @desc    Get document verification status for application (FIXED)
 // @route   GET /api/applications/:applicationId/documents/verification-status
 // @access  Private
 const getDocumentVerificationStatus = asyncHandler(async (req, res) => {
@@ -77,17 +35,25 @@ const getDocumentVerificationStatus = asyncHandler(async (req, res) => {
       throw new Error('Not authorized to access this application');
     }
     
-    // ✅ UPDATED: Get program-specific required certificates instead of all certificate types
+    // ✅ FIXED: Extract programId properly from populated object
+    const programId = application.programId._id || application.programId;
+    console.log(`📋 Looking for requirements for program ID: ${programId}`);
+    
+    // ✅ FIXED: Get program-specific required certificates instead of all certificate types
     const programRequirements = await ProgramCertificateRequirement.find({ 
-      programId: application.programId._id,
+      programId: programId,
       isRequired: true,
       isActive: true 
     }).populate('certificateTypeId', 'name description');
+    
+    console.log(`✅ Found ${programRequirements.length} required program certificates`);
     
     // Get submitted documents for this application
     const submittedDocuments = await ApplicationDocument.find({ 
       applicationId: req.params.applicationId 
     }).populate('certificateTypeId');
+    
+    console.log(`✅ Found ${submittedDocuments.length} submitted documents`);
     
     // Calculate verification status based on program requirements
     const verificationStatus = {
@@ -144,6 +110,48 @@ const getDocumentVerificationStatus = asyncHandler(async (req, res) => {
     res.json(verificationStatus);
   } catch (error) {
     console.error('❌ Error in getDocumentVerificationStatus:', error);
+    throw error;
+  }
+});
+
+// @desc    Get documents for an application
+// @route   GET /api/applications/:applicationId/documents
+// @access  Private
+const getApplicationDocuments = asyncHandler(async (req, res) => {
+  try {
+    console.log(`📋 Fetching documents for application: ${req.params.applicationId}`);
+    
+    // Check if user has permission to view this application
+    const application = await Application.findById(req.params.applicationId);
+    if (!application) {
+      res.status(404);
+      throw new Error('Application not found');
+    }
+    
+    // Permission check
+    if (
+      req.user.role !== 'admin' &&
+      (req.user.role === 'program_admin' && 
+       application.programId.toString() !== req.user.programId?.toString()) &&
+      (req.user.role === 'student' && 
+       application.userId.toString() !== req.user._id.toString())
+    ) {
+      res.status(403);
+      throw new Error('Not authorized to access these documents');
+    }
+    
+    const documents = await ApplicationDocument.find({ 
+      applicationId: req.params.applicationId 
+    })
+      .populate('certificateTypeId', 'name description isRequired')
+      .populate('fileUploadId', 'uuid filename originalName fileSize mimeType uploadDate')
+      .populate('verifiedBy', 'email')
+      .sort({ 'certificateTypeId.displayOrder': 1 });
+    
+    console.log(`✅ Found ${documents.length} documents`);
+    res.json(documents);
+  } catch (error) {
+    console.error('❌ Error in getApplicationDocuments:', error);
     throw error;
   }
 });

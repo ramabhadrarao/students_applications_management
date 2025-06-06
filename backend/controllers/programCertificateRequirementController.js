@@ -1,5 +1,5 @@
 // File: backend/controllers/programCertificateRequirementController.js
-// Purpose: Handle program certificate requirement operations
+// Purpose: Handle program certificate requirement operations (FIXED)
 
 import asyncHandler from 'express-async-handler';
 import ProgramCertificateRequirement from '../models/programCertificateRequirementModel.js';
@@ -13,15 +13,29 @@ const getProgramCertificateRequirements = asyncHandler(async (req, res) => {
   try {
     console.log(`📋 Fetching certificate requirements for program: ${req.params.programId}`);
     
+    // ✅ FIXED: Validate programId format
+    const programId = req.params.programId;
+    if (!programId || programId === '[object Object]' || programId === 'undefined') {
+      res.status(400);
+      throw new Error('Invalid program ID provided');
+    }
+    
+    // ✅ FIXED: Additional validation for ObjectId format
+    const objectIdRegex = /^[0-9a-fA-F]{24}$/;
+    if (!objectIdRegex.test(programId)) {
+      res.status(400);
+      throw new Error('Invalid program ID format');
+    }
+    
     // Check if program exists
-    const program = await Program.findById(req.params.programId);
+    const program = await Program.findById(programId);
     if (!program) {
       res.status(404);
       throw new Error('Program not found');
     }
     
     const requirements = await ProgramCertificateRequirement.find({ 
-      programId: req.params.programId,
+      programId: programId,
       isActive: true 
     })
       .populate('certificateTypeId', 'name description fileTypesAllowed maxFileSizeMb isRequired displayOrder isActive')
@@ -44,8 +58,21 @@ const addProgramCertificateRequirement = asyncHandler(async (req, res) => {
     
     const { certificateTypeId, isRequired, specialInstructions, displayOrder } = req.body;
     
+    // ✅ FIXED: Validate programId format
+    const programId = req.params.programId;
+    if (!programId || programId === '[object Object]' || programId === 'undefined') {
+      res.status(400);
+      throw new Error('Invalid program ID provided');
+    }
+    
+    const objectIdRegex = /^[0-9a-fA-F]{24}$/;
+    if (!objectIdRegex.test(programId)) {
+      res.status(400);
+      throw new Error('Invalid program ID format');
+    }
+    
     // Check if program exists
-    const program = await Program.findById(req.params.programId);
+    const program = await Program.findById(programId);
     if (!program) {
       res.status(404);
       throw new Error('Program not found');
@@ -60,7 +87,7 @@ const addProgramCertificateRequirement = asyncHandler(async (req, res) => {
     
     // Check if requirement already exists
     const existingRequirement = await ProgramCertificateRequirement.findOne({
-      programId: req.params.programId,
+      programId: programId,
       certificateTypeId
     });
     
@@ -71,7 +98,7 @@ const addProgramCertificateRequirement = asyncHandler(async (req, res) => {
     
     // Create requirement
     const requirement = await ProgramCertificateRequirement.create({
-      programId: req.params.programId,
+      programId: programId,
       certificateTypeId,
       isRequired: isRequired !== undefined ? isRequired : true,
       specialInstructions,
@@ -97,6 +124,19 @@ const updateProgramCertificateRequirement = asyncHandler(async (req, res) => {
   try {
     console.log(`📝 Updating certificate requirement: ${req.params.requirementId}`);
     
+    // ✅ FIXED: Validate programId format
+    const programId = req.params.programId;
+    if (!programId || programId === '[object Object]' || programId === 'undefined') {
+      res.status(400);
+      throw new Error('Invalid program ID provided');
+    }
+    
+    const objectIdRegex = /^[0-9a-fA-F]{24}$/;
+    if (!objectIdRegex.test(programId)) {
+      res.status(400);
+      throw new Error('Invalid program ID format');
+    }
+    
     const requirement = await ProgramCertificateRequirement.findById(req.params.requirementId);
     if (!requirement) {
       res.status(404);
@@ -104,7 +144,7 @@ const updateProgramCertificateRequirement = asyncHandler(async (req, res) => {
     }
     
     // Check if requirement belongs to the specified program
-    if (requirement.programId.toString() !== req.params.programId) {
+    if (requirement.programId.toString() !== programId) {
       res.status(400);
       throw new Error('Certificate requirement does not belong to this program');
     }
@@ -136,6 +176,19 @@ const deleteProgramCertificateRequirement = asyncHandler(async (req, res) => {
   try {
     console.log(`🗑️ Deleting certificate requirement: ${req.params.requirementId}`);
     
+    // ✅ FIXED: Validate programId format
+    const programId = req.params.programId;
+    if (!programId || programId === '[object Object]' || programId === 'undefined') {
+      res.status(400);
+      throw new Error('Invalid program ID provided');
+    }
+    
+    const objectIdRegex = /^[0-9a-fA-F]{24}$/;
+    if (!objectIdRegex.test(programId)) {
+      res.status(400);
+      throw new Error('Invalid program ID format');
+    }
+    
     const requirement = await ProgramCertificateRequirement.findById(req.params.requirementId);
     if (!requirement) {
       res.status(404);
@@ -143,7 +196,7 @@ const deleteProgramCertificateRequirement = asyncHandler(async (req, res) => {
     }
     
     // Check if requirement belongs to the specified program
-    if (requirement.programId.toString() !== req.params.programId) {
+    if (requirement.programId.toString() !== programId) {
       res.status(400);
       throw new Error('Certificate requirement does not belong to this program');
     }
@@ -165,9 +218,22 @@ const getAvailableCertificateTypes = asyncHandler(async (req, res) => {
   try {
     console.log(`📋 Fetching available certificate types for program: ${req.params.programId}`);
     
+    // ✅ FIXED: Validate programId format
+    const programId = req.params.programId;
+    if (!programId || programId === '[object Object]' || programId === 'undefined') {
+      res.status(400);
+      throw new Error('Invalid program ID provided');
+    }
+    
+    const objectIdRegex = /^[0-9a-fA-F]{24}$/;
+    if (!objectIdRegex.test(programId)) {
+      res.status(400);
+      throw new Error('Invalid program ID format');
+    }
+    
     // Get existing requirements for this program
     const existingRequirements = await ProgramCertificateRequirement.find({ 
-      programId: req.params.programId,
+      programId: programId,
       isActive: true 
     });
     
@@ -196,6 +262,19 @@ const reorderProgramCertificateRequirements = asyncHandler(async (req, res) => {
     
     const { requirements } = req.body; // Array of { id, displayOrder }
     
+    // ✅ FIXED: Validate programId format
+    const programId = req.params.programId;
+    if (!programId || programId === '[object Object]' || programId === 'undefined') {
+      res.status(400);
+      throw new Error('Invalid program ID provided');
+    }
+    
+    const objectIdRegex = /^[0-9a-fA-F]{24}$/;
+    if (!objectIdRegex.test(programId)) {
+      res.status(400);
+      throw new Error('Invalid program ID format');
+    }
+    
     if (!requirements || !Array.isArray(requirements)) {
       res.status(400);
       throw new Error('Requirements array is required');
@@ -204,7 +283,7 @@ const reorderProgramCertificateRequirements = asyncHandler(async (req, res) => {
     // Update display order for each requirement
     const updatePromises = requirements.map(async (req) => {
       const requirement = await ProgramCertificateRequirement.findById(req.id);
-      if (requirement && requirement.programId.toString() === req.params.programId) {
+      if (requirement && requirement.programId.toString() === programId) {
         requirement.displayOrder = req.displayOrder;
         requirement.dateUpdated = Date.now();
         return requirement.save();
@@ -215,7 +294,7 @@ const reorderProgramCertificateRequirements = asyncHandler(async (req, res) => {
     
     // Return updated requirements
     const updatedRequirements = await ProgramCertificateRequirement.find({ 
-      programId: req.params.programId,
+      programId: programId,
       isActive: true 
     })
       .populate('certificateTypeId', 'name description fileTypesAllowed maxFileSizeMb isRequired displayOrder isActive')
