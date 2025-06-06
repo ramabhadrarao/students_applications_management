@@ -1,10 +1,11 @@
 // File: backend/controllers/applicationDocumentController.js
-// Purpose: Handle application document operations and verification
+// Purpose: Handle application document operations with program requirements integration (UPDATED)
 
 import asyncHandler from 'express-async-handler';
 import ApplicationDocument from '../models/applicationDocumentModel.js';
 import Application from '../models/applicationModel.js';
 import CertificateType from '../models/certificateTypeModel.js';
+import ProgramCertificateRequirement from '../models/programCertificateRequirementModel.js';
 import FileUpload from '../models/fileUploadModel.js';
 
 // @desc    Get documents for an application
@@ -49,7 +50,146 @@ const getApplicationDocuments = asyncHandler(async (req, res) => {
   }
 });
 
-// @desc    Add document to application
+// @desc    Get document verification status for application (UPDATED)
+// @route   GET /api/applications/:applicationId/documents/verification-status
+// @access  Private
+const getDocumentVerificationStatus = asyncHandler(async (req, res) => {
+  try {
+    console.log(`📊 Getting document verification status for application: ${req.params.applicationId}`);
+    
+    // Check if user has permission to view this application
+    const application = await Application.findById(req.params.applicationId)
+      .populate('programId', 'programName programCode');
+    if (!application) {
+      res.status(404);
+      throw new Error('Application not found');
+    }
+    
+    // Permission check
+    if (
+      req.user.role !== 'admin' &&
+      (req.user.role === 'program_admin' && 
+       application.programId._id.toString() !== req.user.programId?.toString()) &&
+      (req.user.role === 'student' && 
+       application.userId.toString() !== req.user._id.toString())
+    ) {
+      res.status(403);
+      throw new Error('Not authorized to access this application');
+    }
+    
+    // ✅ UPDATED: Get program-specific required certificates instead of all certificate types
+    const programRequirements = await ProgramCertificateRequirement.find({ 
+      programId: application.programId._id,
+      isRequired: true,
+      isActive: true 
+    }).populate('certificateTypeId', 'name description');
+    
+    // Get submitted documents for this application
+    const submittedDocuments = await ApplicationDocument.find({ 
+      applicationId: req.params.applicationId 
+    }).populate('certificateTypeId');
+    
+    // Calculate verification status based on program requirements
+    const verificationStatus = {
+      totalRequired: programRequirements.length,
+      totalSubmitted: submittedDocuments.length,
+      totalVerified: submittedDocuments.filter(doc => doc.isVerified).length,
+      missingDocuments: [],
+      unverifiedDocuments: [],
+      verifiedDocuments: [],
+      completionPercentage: 0,
+      verificationPercentage: 0
+    };
+    
+    // Check for missing required documents (program-specific)
+    programRequirements.forEach(requirement => {
+      const submitted = submittedDocuments.find(doc => 
+        doc.certificateTypeId._id.toString() === requirement.certificateTypeId._id.toString()
+      );
+      
+      if (!submitted) {
+        verificationStatus.missingDocuments.push({
+          requirementId: requirement._id,
+          certificateTypeId: requirement.certificateTypeId._id,
+          name: requirement.certificateTypeId.name,
+          description: requirement.certificateTypeId.description,
+          specialInstructions: requirement.specialInstructions
+        });
+      }
+    });
+    
+    // Categorize submitted documents
+    submittedDocuments.forEach(doc => {
+      if (doc.isVerified) {
+        verificationStatus.verifiedDocuments.push(doc);
+      } else {
+        verificationStatus.unverifiedDocuments.push(doc);
+      }
+    });
+    
+    // Calculate percentages
+    if (verificationStatus.totalRequired > 0) {
+      verificationStatus.completionPercentage = Math.round(
+        (verificationStatus.totalSubmitted / verificationStatus.totalRequired) * 100
+      );
+    }
+    
+    if (verificationStatus.totalSubmitted > 0) {
+      verificationStatus.verificationPercentage = Math.round(
+        (verificationStatus.totalVerified / verificationStatus.totalSubmitted) * 100
+      );
+    }
+    
+    console.log(`✅ Verification status calculated: ${verificationStatus.completionPercentage}% complete, ${verificationStatus.verificationPercentage}% verified`);
+    res.json(verificationStatus);
+  } catch (error) {
+    console.error('❌ Error in getDocumentVerificationStatus:', error);
+    throw error;
+  }
+});
+
+// @desc    Get available certificate types for an application (NEW)
+// @route   GET /api/applications/:applicationId/documents/available-types
+// @access  Private
+const getAvailableCertificateTypes = asyncHandler(async (req, res) => {
+  try {
+    console.log(`📋 Getting available certificate types for application: ${req.params.applicationId}`);
+    
+    // Get application with program info
+    const application = await Application.findById(req.params.applicationId);
+    if (!application) {
+      res.status(404);
+      throw new Error('Application not found');
+    }
+    
+    // Permission check
+    if (
+      req.user.role !== 'admin' &&
+      (req.user.role === 'program_admin' && 
+       application.programId.toString() !== req.user.programId?.toString()) &&
+      (req.user.role === 'student' && 
+       application.userId.toString() !== req.user._id.toString())
+    ) {
+      res.status(403);
+      throw new Error('Not authorized to access this application');
+    }
+    
+    // Get program-specific certificate requirements
+    const programRequirements = await ProgramCertificateRequirement.find({ 
+      programId: application.programId,
+      isActive: true 
+    }).populate('certificateTypeId', 'name description fileTypesAllowed maxFileSizeMb')
+      .sort({ displayOrder: 1 });
+    
+    console.log(`✅ Found ${programRequirements.length} available certificate types for this program`);
+    res.json(programRequirements);
+  } catch (error) {
+    console.error('❌ Error in getAvailableCertificateTypes:', error);
+    throw error;
+  }
+});
+
+// @desc    Add document to application (UPDATED with validation)
 // @route   POST /api/applications/:applicationId/documents
 // @access  Private
 const addApplicationDocument = asyncHandler(async (req, res) => {
@@ -71,11 +211,16 @@ const addApplicationDocument = asyncHandler(async (req, res) => {
       throw new Error('Not authorized to add documents to this application');
     }
     
-    // Verify certificate type exists
-    const certificateType = await CertificateType.findById(certificateTypeId);
-    if (!certificateType) {
-      res.status(404);
-      throw new Error('Certificate type not found');
+    // ✅ UPDATED: Verify certificate type is allowed for this program
+    const programRequirement = await ProgramCertificateRequirement.findOne({
+      programId: application.programId,
+      certificateTypeId,
+      isActive: true
+    }).populate('certificateTypeId');
+    
+    if (!programRequirement) {
+      res.status(400);
+      throw new Error('This certificate type is not required for this program');
     }
     
     // Verify file upload exists
@@ -291,105 +436,12 @@ const deleteApplicationDocument = asyncHandler(async (req, res) => {
   }
 });
 
-// @desc    Get document verification status for application
-// @route   GET /api/applications/:applicationId/documents/verification-status
-// @access  Private
-const getDocumentVerificationStatus = asyncHandler(async (req, res) => {
-  try {
-    console.log(`📊 Getting document verification status for application: ${req.params.applicationId}`);
-    
-    // Check if user has permission to view this application
-    const application = await Application.findById(req.params.applicationId);
-    if (!application) {
-      res.status(404);
-      throw new Error('Application not found');
-    }
-    
-    // Permission check
-    if (
-      req.user.role !== 'admin' &&
-      (req.user.role === 'program_admin' && 
-       application.programId.toString() !== req.user.programId?.toString()) &&
-      (req.user.role === 'student' && 
-       application.userId.toString() !== req.user._id.toString())
-    ) {
-      res.status(403);
-      throw new Error('Not authorized to access this application');
-    }
-    
-    // Get all required certificate types for the program
-    const requiredCertificates = await CertificateType.find({ 
-      isRequired: true,
-      isActive: true 
-    });
-    
-    // Get submitted documents for this application
-    const submittedDocuments = await ApplicationDocument.find({ 
-      applicationId: req.params.applicationId 
-    }).populate('certificateTypeId');
-    
-    // Calculate verification status
-    const verificationStatus = {
-      totalRequired: requiredCertificates.length,
-      totalSubmitted: submittedDocuments.length,
-      totalVerified: submittedDocuments.filter(doc => doc.isVerified).length,
-      missingDocuments: [],
-      unverifiedDocuments: [],
-      verifiedDocuments: [],
-      completionPercentage: 0,
-      verificationPercentage: 0
-    };
-    
-    // Check for missing required documents
-    requiredCertificates.forEach(cert => {
-      const submitted = submittedDocuments.find(doc => 
-        doc.certificateTypeId._id.toString() === cert._id.toString()
-      );
-      
-      if (!submitted) {
-        verificationStatus.missingDocuments.push({
-          certificateTypeId: cert._id,
-          name: cert.name,
-          description: cert.description
-        });
-      }
-    });
-    
-    // Categorize submitted documents
-    submittedDocuments.forEach(doc => {
-      if (doc.isVerified) {
-        verificationStatus.verifiedDocuments.push(doc);
-      } else {
-        verificationStatus.unverifiedDocuments.push(doc);
-      }
-    });
-    
-    // Calculate percentages
-    if (verificationStatus.totalRequired > 0) {
-      verificationStatus.completionPercentage = Math.round(
-        (verificationStatus.totalSubmitted / verificationStatus.totalRequired) * 100
-      );
-    }
-    
-    if (verificationStatus.totalSubmitted > 0) {
-      verificationStatus.verificationPercentage = Math.round(
-        (verificationStatus.totalVerified / verificationStatus.totalSubmitted) * 100
-      );
-    }
-    
-    console.log(`✅ Verification status calculated: ${verificationStatus.completionPercentage}% complete, ${verificationStatus.verificationPercentage}% verified`);
-    res.json(verificationStatus);
-  } catch (error) {
-    console.error('❌ Error in getDocumentVerificationStatus:', error);
-    throw error;
-  }
-});
-
 export {
   getApplicationDocuments,
   addApplicationDocument,
   updateApplicationDocument,
   verifyApplicationDocument,
   deleteApplicationDocument,
-  getDocumentVerificationStatus
+  getDocumentVerificationStatus,
+  getAvailableCertificateTypes
 };

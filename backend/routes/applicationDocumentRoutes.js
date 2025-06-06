@@ -1,5 +1,5 @@
 // File: backend/routes/applicationDocumentRoutes.js
-// Purpose: Define routes for application document operations
+// Purpose: Define routes for application document operations (UPDATED)
 
 import express from 'express';
 import {
@@ -8,7 +8,8 @@ import {
   updateApplicationDocument,
   verifyApplicationDocument,
   deleteApplicationDocument,
-  getDocumentVerificationStatus
+  getDocumentVerificationStatus,
+  getAvailableCertificateTypes
 } from '../controllers/applicationDocumentController.js';
 import { protect, programAdmin } from '../middleware/authMiddleware.js';
 
@@ -21,6 +22,9 @@ router.route('/')
 
 router.route('/verification-status')
   .get(protect, getDocumentVerificationStatus); // Get verification status
+
+router.route('/available-types')
+  .get(protect, getAvailableCertificateTypes); // Get available certificate types for program
 
 // Individual document routes
 router.route('/:documentId')

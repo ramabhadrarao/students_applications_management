@@ -16,6 +16,7 @@ import certificateTypeRoutes from './routes/certificateTypeRoutes.js';
 import fileUploadRoutes from './routes/fileUploadRoutes.js';
 import notificationRoutes from './routes/notificationRoutes.js';
 import applicationDocumentRoutes from './routes/applicationDocumentRoutes.js';
+import programCertificateRequirementRoutes from './routes/programCertificateRequirementRoutes.js';
 
 // Load env vars
 dotenv.config();
@@ -51,6 +52,8 @@ app.use('/api/notifications', notificationRoutes);
 
 // Nested routes for application documents
 app.use('/api/applications/:applicationId/documents', applicationDocumentRoutes);
+// Nested routes for program certificate requirements
+app.use('/api/programs/:programId/certificates', programCertificateRequirementRoutes);
 
 // Serve static files (uploads)
 const __dirname = path.resolve();

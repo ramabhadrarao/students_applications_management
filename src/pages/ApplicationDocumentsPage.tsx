@@ -1,6 +1,3 @@
-// File: src/pages/ApplicationDocumentsPage.tsx
-// Purpose: Manage documents for specific application
-
 import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { 
@@ -11,15 +8,15 @@ import {
   AlertCircle, 
   Download, 
   Trash2,
-  Eye,
   ArrowLeft 
 } from 'lucide-react';
 import useApplicationDocumentStore from '../stores/applicationDocumentStore';
-import useCertificateTypeStore from '../stores/certificateTypeStore';
+import useApplicationStore from '../stores/applicationStore';
+import useProgramCertificateRequirementStore from '../stores/programCertificateRequirementStore';
 import useFileUploadStore from '../stores/fileUploadStore';
 import useAuthStore from '../stores/authStore';
 
-const ApplicationDocumentsPage = () => {
+const ApplicationDocumentsPageUpdated = () => {
   const { applicationId } = useParams();
   const { user } = useAuthStore();
   const { 
@@ -33,7 +30,8 @@ const ApplicationDocumentsPage = () => {
     deleteApplicationDocument
   } = useApplicationDocumentStore();
   
-  const { certificateTypes, fetchCertificateTypes } = useCertificateTypeStore();
+  const { currentApplication, fetchApplicationById } = useApplicationStore();
+  const { requirements, fetchProgramRequirements } = useProgramCertificateRequirementStore();
   const { uploadFile, uploading } = useFileUploadStore();
   
   const [showUploadModal, setShowUploadModal] = useState(false);
@@ -47,9 +45,16 @@ const ApplicationDocumentsPage = () => {
     if (applicationId) {
       fetchApplicationDocuments(applicationId);
       getDocumentVerificationStatus(applicationId);
-      fetchCertificateTypes();
+      fetchApplicationById(applicationId);
     }
   }, [applicationId]);
+
+  // Fetch program requirements when application is loaded
+  useEffect(() => {
+    if (currentApplication?.programId) {
+      fetchProgramRequirements(currentApplication.programId);
+    }
+  }, [currentApplication]);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -107,8 +112,14 @@ const ApplicationDocumentsPage = () => {
     );
   };
 
+  // ✅ UPDATED: Get program-specific requirements instead of all certificate types
   const getRequiredCertificateTypes = () => {
-    return certificateTypes.filter(ct => ct.isRequired && ct.isActive);
+    return requirements.filter(req => req.isRequired && req.isActive);
+  };
+
+  // ✅ UPDATED: Get available certificate types for upload (program-specific)
+  const getAvailableCertificateTypes = () => {
+    return requirements.filter(req => req.isActive);
   };
 
   const getUploadedDocumentTypes = () => {
@@ -117,7 +128,29 @@ const ApplicationDocumentsPage = () => {
 
   const getMissingRequiredDocuments = () => {
     const uploadedTypes = getUploadedDocumentTypes();
-    return getRequiredCertificateTypes().filter(ct => !uploadedTypes.includes(ct._id));
+    return getRequiredCertificateTypes().filter(req => 
+      !uploadedTypes.includes(req.certificateTypeId._id)
+    );
+  };
+
+  // ✅ UPDATED: Calculate verification status based on program requirements
+  const getCustomVerificationStatus = () => {
+    const requiredDocs = getRequiredCertificateTypes();
+    const uploadedDocs = documents;
+    const verifiedDocs = documents.filter(doc => doc.isVerified);
+    
+    const missingRequired = getMissingRequiredDocuments();
+    
+    return {
+      totalRequired: requiredDocs.length,
+      totalSubmitted: uploadedDocs.length,
+      totalVerified: verifiedDocs.length,
+      missingDocuments: missingRequired,
+      completionPercentage: requiredDocs.length > 0 ? 
+        Math.round((uploadedDocs.length / requiredDocs.length) * 100) : 100,
+      verificationPercentage: uploadedDocs.length > 0 ? 
+        Math.round((verifiedDocs.length / uploadedDocs.length) * 100) : 0
+    };
   };
 
   if (loading) {
@@ -127,6 +160,8 @@ const ApplicationDocumentsPage = () => {
       </div>
     );
   }
+
+  const customVerificationStatus = getCustomVerificationStatus();
 
   return (
     <div className="space-y-6">
@@ -138,7 +173,14 @@ const ApplicationDocumentsPage = () => {
           >
             <ArrowLeft className="h-6 w-6" />
           </Link>
-          <h1 className="text-2xl font-semibold text-gray-900">Application Documents</h1>
+          <div>
+            <h1 className="text-2xl font-semibold text-gray-900">Application Documents</h1>
+            {currentApplication && (
+              <p className="text-sm text-gray-600 mt-1">
+                {currentApplication.applicationNumber} - {currentApplication.programId?.programName}
+              </p>
+            )}
+          </div>
         </div>
         <button
           onClick={() => setShowUploadModal(true)}
@@ -155,91 +197,89 @@ const ApplicationDocumentsPage = () => {
         </div>
       )}
 
-      {/* Document Verification Status */}
-      {verificationStatus && (
-        <div className="bg-white shadow rounded-lg p-6">
-          <h3 className="text-lg font-medium text-gray-900 mb-4">Document Status Overview</h3>
-          
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-            <div className="bg-blue-50 rounded-lg p-4">
-              <div className="flex items-center">
-                <FileText className="h-8 w-8 text-blue-600" />
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-blue-900">Total Required</p>
-                  <p className="text-2xl font-bold text-blue-600">{verificationStatus.totalRequired}</p>
-                </div>
-              </div>
-            </div>
-            
-            <div className="bg-green-50 rounded-lg p-4">
-              <div className="flex items-center">
-                <CheckCircle className="h-8 w-8 text-green-600" />
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-green-900">Verified</p>
-                  <p className="text-2xl font-bold text-green-600">{verificationStatus.totalVerified}</p>
-                </div>
-              </div>
-            </div>
-            
-            <div className="bg-yellow-50 rounded-lg p-4">
-              <div className="flex items-center">
-                <AlertCircle className="h-8 w-8 text-yellow-600" />
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-yellow-900">Pending</p>
-                  <p className="text-2xl font-bold text-yellow-600">
-                    {verificationStatus.totalSubmitted - verificationStatus.totalVerified}
-                  </p>
-                </div>
+      {/* ✅ UPDATED: Document Verification Status based on program requirements */}
+      <div className="bg-white shadow rounded-lg p-6">
+        <h3 className="text-lg font-medium text-gray-900 mb-4">Program Document Requirements</h3>
+        
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+          <div className="bg-blue-50 rounded-lg p-4">
+            <div className="flex items-center">
+              <FileText className="h-8 w-8 text-blue-600" />
+              <div className="ml-4">
+                <p className="text-sm font-medium text-blue-900">Required for Program</p>
+                <p className="text-2xl font-bold text-blue-600">{customVerificationStatus.totalRequired}</p>
               </div>
             </div>
           </div>
-
-          {/* Progress Bars */}
-          <div className="space-y-4">
-            <div>
-              <div className="flex justify-between text-sm">
-                <span>Document Completion</span>
-                <span>{verificationStatus.completionPercentage}%</span>
-              </div>
-              <div className="mt-1 bg-gray-200 rounded-full h-2">
-                <div 
-                  className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                  style={{ width: `${verificationStatus.completionPercentage}%` }}
-                ></div>
+          
+          <div className="bg-green-50 rounded-lg p-4">
+            <div className="flex items-center">
+              <CheckCircle className="h-8 w-8 text-green-600" />
+              <div className="ml-4">
+                <p className="text-sm font-medium text-green-900">Verified</p>
+                <p className="text-2xl font-bold text-green-600">{customVerificationStatus.totalVerified}</p>
               </div>
             </div>
-            
-            <div>
-              <div className="flex justify-between text-sm">
-                <span>Verification Progress</span>
-                <span>{verificationStatus.verificationPercentage}%</span>
-              </div>
-              <div className="mt-1 bg-gray-200 rounded-full h-2">
-                <div 
-                  className="bg-green-600 h-2 rounded-full transition-all duration-300"
-                  style={{ width: `${verificationStatus.verificationPercentage}%` }}
-                ></div>
+          </div>
+          
+          <div className="bg-yellow-50 rounded-lg p-4">
+            <div className="flex items-center">
+              <AlertCircle className="h-8 w-8 text-yellow-600" />
+              <div className="ml-4">
+                <p className="text-sm font-medium text-yellow-900">Pending</p>
+                <p className="text-2xl font-bold text-yellow-600">
+                  {customVerificationStatus.totalSubmitted - customVerificationStatus.totalVerified}
+                </p>
               </div>
             </div>
           </div>
         </div>
-      )}
 
-      {/* Missing Required Documents Alert */}
-      {verificationStatus && verificationStatus.missingDocuments.length > 0 && (
+        {/* Progress Bars */}
+        <div className="space-y-4">
+          <div>
+            <div className="flex justify-between text-sm">
+              <span>Document Completion</span>
+              <span>{customVerificationStatus.completionPercentage}%</span>
+            </div>
+            <div className="mt-1 bg-gray-200 rounded-full h-2">
+              <div 
+                className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                style={{ width: `${customVerificationStatus.completionPercentage}%` }}
+              ></div>
+            </div>
+          </div>
+          
+          <div>
+            <div className="flex justify-between text-sm">
+              <span>Verification Progress</span>
+              <span>{customVerificationStatus.verificationPercentage}%</span>
+            </div>
+            <div className="mt-1 bg-gray-200 rounded-full h-2">
+              <div 
+                className="bg-green-600 h-2 rounded-full transition-all duration-300"
+                style={{ width: `${customVerificationStatus.verificationPercentage}%` }}
+              ></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ✅ UPDATED: Missing Required Documents Alert based on program requirements */}
+      {customVerificationStatus.missingDocuments.length > 0 && (
         <div className="bg-red-50 border border-red-200 rounded-lg p-4">
           <div className="flex items-center">
             <XCircle className="h-5 w-5 text-red-400" />
             <h3 className="ml-2 text-sm font-medium text-red-800">
-              Missing Required Documents
+              Missing Required Documents for This Program
             </h3>
           </div>
           <div className="mt-2">
             <ul className="list-disc list-inside text-sm text-red-700">
-              {verificationStatus.missingDocuments.map((doc) => (
-                <li key={doc.certificateTypeId}>
-                  {doc.name}
-                  {doc.description && ` - ${doc.description}`}
+              {customVerificationStatus.missingDocuments.map((req) => (
+                <li key={req._id}>
+                  {req.certificateTypeId.name}
+                  {req.specialInstructions && ` - ${req.specialInstructions}`}
                 </li>
               ))}
             </ul>
@@ -332,7 +372,7 @@ const ApplicationDocumentsPage = () => {
         </div>
       </div>
 
-      {/* Upload Modal */}
+      {/* ✅ UPDATED: Upload Modal with program-specific certificate types */}
       {showUploadModal && (
         <div className="fixed inset-0 z-10 overflow-y-auto">
           <div className="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
@@ -364,9 +404,10 @@ const ApplicationDocumentsPage = () => {
                             className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
                           >
                             <option value="">Select document type...</option>
-                            {certificateTypes.filter(ct => ct.isActive).map(ct => (
-                              <option key={ct._id} value={ct._id}>
-                                {ct.name} {ct.isRequired && '(Required)'}
+                            {getAvailableCertificateTypes().map(req => (
+                              <option key={req._id} value={req.certificateTypeId._id}>
+                                {req.certificateTypeId.name} {req.isRequired && '(Required)'}
+                                {req.specialInstructions && ` - ${req.specialInstructions}`}
                               </option>
                             ))}
                           </select>
@@ -430,4 +471,4 @@ const ApplicationDocumentsPage = () => {
   );
 };
 
-export default ApplicationDocumentsPage;
+export default ApplicationDocumentsPageUpdated;

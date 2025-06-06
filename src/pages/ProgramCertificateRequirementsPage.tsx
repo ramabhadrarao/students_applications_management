@@ -1,33 +1,31 @@
 // File: src/pages/ProgramCertificateRequirementsPage.tsx
-// Purpose: Admin interface to manage program-specific certificate requirements
+// Purpose: Admin interface to manage program-specific certificate requirements (Updated)
 
 import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { ArrowLeft, Plus, Settings, CheckCircle, XCircle, Edit2, Trash2 } from 'lucide-react';
 import useProgramStore from '../stores/programStore';
-import useCertificateTypeStore from '../stores/certificateTypeStore';
-
-interface ProgramCertificateRequirement {
-  _id?: string;
-  programId: string;
-  certificateTypeId: string;
-  isRequired: boolean;
-  specialInstructions?: string;
-  displayOrder: number;
-}
+import useProgramCertificateRequirementStore from '../stores/programCertificateRequirementStore';
 
 const ProgramCertificateRequirementsPage = () => {
   const { programId } = useParams();
   const { programs, fetchPrograms } = useProgramStore();
-  const { certificateTypes, fetchCertificateTypes } = useCertificateTypeStore();
+  const { 
+    requirements, 
+    availableCertificateTypes, 
+    loading, 
+    error, 
+    fetchProgramRequirements,
+    fetchAvailableCertificateTypes,
+    addProgramRequirement,
+    updateProgramRequirement,
+    deleteProgramRequirement,
+    clearError
+  } = useProgramCertificateRequirementStore();
   
   const [currentProgram, setCurrentProgram] = useState<any>(null);
-  const [requirements, setRequirements] = useState<ProgramCertificateRequirement[]>([]);
-  const [availableCertificates, setAvailableCertificates] = useState<any[]>([]);
   const [showAddModal, setShowAddModal] = useState(false);
-  const [editingRequirement, setEditingRequirement] = useState<ProgramCertificateRequirement | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [editingRequirement, setEditingRequirement] = useState<any>(null);
 
   const [newRequirement, setNewRequirement] = useState({
     certificateTypeId: '',
@@ -39,8 +37,8 @@ const ProgramCertificateRequirementsPage = () => {
   useEffect(() => {
     if (programId) {
       fetchPrograms();
-      fetchCertificateTypes();
-      fetchProgramRequirements();
+      fetchProgramRequirements(programId);
+      fetchAvailableCertificateTypes(programId);
     }
   }, [programId]);
 
@@ -51,51 +49,23 @@ const ProgramCertificateRequirementsPage = () => {
     }
   }, [programs, programId]);
 
-  const fetchProgramRequirements = async () => {
-    try {
-      setLoading(true);
-      // This would be an API call to fetch program-specific requirements
-      // For now, using mock data based on certificate types
-      const mockRequirements: ProgramCertificateRequirement[] = [
-        {
-          _id: '1',
-          programId: programId!,
-          certificateTypeId: '1',
-          isRequired: true,
-          specialInstructions: 'Must be from recognized board',
-          displayOrder: 1
-        }
-      ];
-      setRequirements(mockRequirements);
-      setLoading(false);
-    } catch (err) {
-      setError('Failed to fetch requirements');
-      setLoading(false);
-    }
-  };
-
+  // Refresh available certificate types when requirements change
   useEffect(() => {
-    // Filter available certificates that aren't already added
-    const usedCertificateIds = requirements.map(req => req.certificateTypeId);
-    const available = certificateTypes.filter(cert => 
-      cert.isActive && !usedCertificateIds.includes(cert._id)
-    );
-    setAvailableCertificates(available);
-  }, [certificateTypes, requirements]);
+    if (programId) {
+      fetchAvailableCertificateTypes(programId);
+    }
+  }, [requirements.length, programId]);
 
   const handleAddRequirement = async () => {
+    if (!programId || !newRequirement.certificateTypeId) return;
+    
     try {
-      const requirement: ProgramCertificateRequirement = {
-        programId: programId!,
+      await addProgramRequirement(programId, {
         certificateTypeId: newRequirement.certificateTypeId,
         isRequired: newRequirement.isRequired,
         specialInstructions: newRequirement.specialInstructions,
         displayOrder: newRequirement.displayOrder || requirements.length + 1
-      };
-
-      // This would be an API call
-      const savedRequirement = { ...requirement, _id: Date.now().toString() };
-      setRequirements(prev => [...prev, savedRequirement]);
+      });
       
       setNewRequirement({
         certificateTypeId: '',
@@ -104,42 +74,58 @@ const ProgramCertificateRequirementsPage = () => {
         displayOrder: 0
       });
       setShowAddModal(false);
+      
+      // Refresh available certificate types
+      fetchAvailableCertificateTypes(programId);
     } catch (err) {
-      setError('Failed to add requirement');
+      console.error('Failed to add requirement:', err);
     }
   };
 
-  const handleUpdateRequirement = async (requirement: ProgramCertificateRequirement) => {
+  const handleUpdateRequirement = async () => {
+    if (!programId || !editingRequirement) return;
+    
     try {
-      // This would be an API call
-      setRequirements(prev => prev.map(req => 
-        req._id === requirement._id ? requirement : req
-      ));
+      await updateProgramRequirement(programId, editingRequirement._id, {
+        isRequired: editingRequirement.isRequired,
+        specialInstructions: editingRequirement.specialInstructions,
+        displayOrder: editingRequirement.displayOrder
+      });
+      
       setEditingRequirement(null);
     } catch (err) {
-      setError('Failed to update requirement');
+      console.error('Failed to update requirement:', err);
     }
   };
 
   const handleDeleteRequirement = async (requirementId: string) => {
+    if (!programId) return;
+    
     if (window.confirm('Are you sure you want to remove this requirement?')) {
       try {
-        // This would be an API call
-        setRequirements(prev => prev.filter(req => req._id !== requirementId));
+        await deleteProgramRequirement(programId, requirementId);
+        // Refresh available certificate types
+        fetchAvailableCertificateTypes(programId);
       } catch (err) {
-        setError('Failed to delete requirement');
+        console.error('Failed to delete requirement:', err);
       }
     }
   };
 
-  const getCertificateTypeName = (certificateTypeId: string) => {
-    const certType = certificateTypes.find(ct => ct._id === certificateTypeId);
-    return certType?.name || 'Unknown Certificate';
+  const resetAddForm = () => {
+    setNewRequirement({
+      certificateTypeId: '',
+      isRequired: true,
+      specialInstructions: '',
+      displayOrder: 0
+    });
+    setShowAddModal(false);
+    clearError();
   };
 
-  const getCertificateTypeDescription = (certificateTypeId: string) => {
-    const certType = certificateTypes.find(ct => ct._id === certificateTypeId);
-    return certType?.description || '';
+  const resetEditForm = () => {
+    setEditingRequirement(null);
+    clearError();
   };
 
   if (loading) {
@@ -246,10 +232,10 @@ const ProgramCertificateRequirementsPage = () => {
                       </div>
                       <div className="flex-1 min-w-0">
                         <h4 className="text-sm font-medium text-gray-900">
-                          {getCertificateTypeName(requirement.certificateTypeId)}
+                          {requirement.certificateTypeId.name}
                         </h4>
                         <p className="text-sm text-gray-500">
-                          {getCertificateTypeDescription(requirement.certificateTypeId)}
+                          {requirement.certificateTypeId.description}
                         </p>
                         {requirement.specialInstructions && (
                           <p className="text-sm text-blue-600 mt-1">
@@ -273,14 +259,14 @@ const ProgramCertificateRequirementsPage = () => {
                     
                     <div className="flex space-x-2">
                       <button
-                        onClick={() => setEditingRequirement(requirement)}
+                        onClick={() => setEditingRequirement({ ...requirement })}
                         className="text-gray-400 hover:text-gray-600"
                         title="Edit"
                       >
                         <Edit2 className="h-4 w-4" />
                       </button>
                       <button
-                        onClick={() => handleDeleteRequirement(requirement._id!)}
+                        onClick={() => handleDeleteRequirement(requirement._id)}
                         className="text-gray-400 hover:text-red-600"
                         title="Remove"
                       >
@@ -326,12 +312,17 @@ const ProgramCertificateRequirementsPage = () => {
                           className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
                         >
                           <option value="">Select certificate type...</option>
-                          {availableCertificates.map(cert => (
+                          {availableCertificateTypes.map(cert => (
                             <option key={cert._id} value={cert._id}>
                               {cert.name}
                             </option>
                           ))}
                         </select>
+                        {availableCertificateTypes.length === 0 && (
+                          <p className="mt-1 text-sm text-gray-500">
+                            No available certificate types. All certificate types may already be added.
+                          </p>
+                        )}
                       </div>
 
                       <div>
@@ -394,21 +385,13 @@ const ProgramCertificateRequirementsPage = () => {
               <div className="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
                 <button
                   onClick={handleAddRequirement}
-                  disabled={!newRequirement.certificateTypeId}
+                  disabled={!newRequirement.certificateTypeId || loading}
                   className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-blue-600 text-base font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:ml-3 sm:w-auto sm:text-sm disabled:opacity-50"
                 >
-                  Add Requirement
+                  {loading ? 'Adding...' : 'Add Requirement'}
                 </button>
                 <button
-                  onClick={() => {
-                    setShowAddModal(false);
-                    setNewRequirement({
-                      certificateTypeId: '',
-                      isRequired: true,
-                      specialInstructions: '',
-                      displayOrder: 0
-                    });
-                  }}
+                  onClick={resetAddForm}
                   className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm"
                 >
                   Cancel
@@ -442,7 +425,7 @@ const ProgramCertificateRequirementsPage = () => {
                         </label>
                         <input
                           type="text"
-                          value={getCertificateTypeName(editingRequirement.certificateTypeId)}
+                          value={editingRequirement.certificateTypeId.name}
                           disabled
                           className="mt-1 block w-full rounded-md border-gray-300 bg-gray-50 shadow-sm sm:text-sm"
                         />
@@ -455,10 +438,10 @@ const ProgramCertificateRequirementsPage = () => {
                         <input
                           type="number"
                           value={editingRequirement.displayOrder}
-                          onChange={(e) => setEditingRequirement(prev => prev ? ({ 
+                          onChange={(e) => setEditingRequirement(prev => ({ 
                             ...prev, 
                             displayOrder: parseInt(e.target.value) || 0
-                          }) : null)}
+                          }))}
                           min="0"
                           className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
                         />
@@ -470,10 +453,10 @@ const ProgramCertificateRequirementsPage = () => {
                         </label>
                         <textarea
                           value={editingRequirement.specialInstructions || ''}
-                          onChange={(e) => setEditingRequirement(prev => prev ? ({ 
+                          onChange={(e) => setEditingRequirement(prev => ({ 
                             ...prev, 
                             specialInstructions: e.target.value 
-                          }) : null)}
+                          }))}
                           rows={3}
                           className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
                           placeholder="Any special instructions for this certificate..."
@@ -485,10 +468,10 @@ const ProgramCertificateRequirementsPage = () => {
                           <input
                             type="checkbox"
                             checked={editingRequirement.isRequired}
-                            onChange={(e) => setEditingRequirement(prev => prev ? ({ 
+                            onChange={(e) => setEditingRequirement(prev => ({ 
                               ...prev, 
                               isRequired: e.target.checked 
-                            }) : null)}
+                            }))}
                             className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                           />
                           <label className="ml-2 block text-sm text-gray-900">
@@ -503,13 +486,14 @@ const ProgramCertificateRequirementsPage = () => {
               
               <div className="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
                 <button
-                  onClick={() => handleUpdateRequirement(editingRequirement)}
-                  className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-blue-600 text-base font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:ml-3 sm:w-auto sm:text-sm"
+                  onClick={handleUpdateRequirement}
+                  disabled={loading}
+                  className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-blue-600 text-base font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:ml-3 sm:w-auto sm:text-sm disabled:opacity-50"
                 >
-                  Update Requirement
+                  {loading ? 'Updating...' : 'Update Requirement'}
                 </button>
                 <button
-                  onClick={() => setEditingRequirement(null)}
+                  onClick={resetEditForm}
                   className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm"
                 >
                   Cancel
